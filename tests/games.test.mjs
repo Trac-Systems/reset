@@ -89,7 +89,8 @@ test('guess puzzle has independent floor/demand adjustment; target capacity and 
   for (let h = 6; h < 9; h++) {
     for (let j = 0; j < 2; j++) assert.equal(await l.move('guess', e.p, addr(h * 10 + j)), null);
     if (h === 6) {
-      assert.equal(await l.move('claim', { r: 0, q: 1000 }, addr(99)), 'capacity');
+      // Guesses have their own lane: a full guess lane never blocks other move types.
+      assert.notEqual(await l.move('claim', { r: 0, q: 1000 }, addr(99)), 'capacity');
     }
     await l.advance(h + 1);
   }
@@ -137,7 +138,7 @@ test('penalties reach exiting collateral; short exit wait cannot escape unsettle
 });
 
 test('exiting record bound keeps penalty work bounded, coalesces releases and recovers after withdrawal', async () => {
-  const l = gameLedger({ headers, deposits: funded(1) });
+  const l = gameLedger({ headers, deposits: funded(1), params: { min_amount: '1' } });
   for (let i = 0; i < 256; i++) {
     await l.advance(6 + i);
     assert.equal(await l.move('unlock', { amount: '1' }, addr(10)), null);
@@ -241,4 +242,32 @@ test('collapse safety stays off until the Mine has been half full', async () => 
   assert.equal(l.data.get('mine/last').r, 0);
   assert.equal(l.data.get('mine/last').collapse, false, 'an empty launch Mine is not a collapse');
   assert.equal(l.data.get('mine/capacity'), MINE_DEFAULTS.mine_capacity); l.check();
+});
+
+test('griefing guards: guess spam never raises other puzzles or fills other lanes; dust is refused', async () => {
+  const l = gameLedger({ headers, deposits: funded(2), params: { capacity: 4, per_address: 100, guess_bits: 0, move_bits: 0 } });
+  await l.advance(6);
+  // Fill the guess lane at this height.
+  for (let i = 0; i < 4; i++) assert.equal(await l.move('guess', { tb: 20 + i, n: '00000000' }, addr(200)), null);
+  assert.equal(await l.move('guess', { tb: 30, n: '00000000' }, addr(201)), 'capacity');
+  // Other lanes are untouched.
+  assert.equal(await l.move('unlock', { amount: '10000000' }, addr(10)), null);
+  for (let h = 7; h < 12; h++) {
+    await l.advance(h);
+    for (let i = 0; i < 4; i++) await l.move('guess', { tb: h + 20, n: `0000000${i}` }, addr(300 + i));
+  }
+  const bits = (await l.view().state()).bits;
+  assert.ok(bits.guess > 0, 'guess puzzle follows demand');
+  for (const t of ['lock', 'unlock', 'withdraw', 'claim']) assert.equal(bits[t], 0, `${t} keeps the fixed floor`);
+  assert.equal(await l.move('lock', { amount: '9999999' }, addr(10)), 'amount', 'locks below 0.1 coin are refused');
+  assert.equal(await l.move('unlock', { amount: '1' }, addr(10)), 'amount', 'unlocks below 0.1 coin are refused');
+  l.check();
+});
+
+test('claims need at least 0.1 coin deposited', async () => {
+  const l = gameLedger({ headers, deposits: [[addr(10), 9999999n], [addr(11), 10000000n]] });
+  await l.advance(1);
+  assert.equal(await l.move('claim', { r: 0, q: 1000 }, addr(10)), 'deposit');
+  assert.equal(await l.move('claim', { r: 0, q: 1000 }, addr(11)), null);
+  l.check();
 });

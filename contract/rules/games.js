@@ -39,12 +39,12 @@ export function checkGuess(p, tip, params, seen, count, limit, pending) {
   if (seen) return 'already_guessed';
   return count >= limit ? 'lottery_capacity' : null;
 }
-export function checkClaim(p, tip, checkpoint, deposit, seen) {
+export function checkClaim(p, tip, checkpoint, deposit, seen, minDeposit) {
   const w = roundWindow(roundAt(tip, checkpoint), checkpoint);
   if (p.r !== w.r) return 'mine_round';
   if (tip < w.start || tip > w.claim_end) return 'claim_window';
   if (seen) return 'already_claimed';
-  return BigInt(deposit) === 0n ? 'deposit' : null;
+  return BigInt(deposit) < BigInt(minDeposit ?? '10000000') ? 'deposit' : null;
 }
 export function circularDistance(n, hash) {
   const delta = BigInt(`0x${n}`) - BigInt(`0x${hash.slice(-8)}`);

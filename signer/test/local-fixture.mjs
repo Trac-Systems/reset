@@ -12,7 +12,7 @@ export async function localFixture(t) {
   const root = await temp(t), directory = join(root, 'wallet'), contextFile = join(root, 'context.json');
   const { address } = await init({ directory, password });
   await writeFile(contextFile, JSON.stringify(context));
-  const ledger = gameLedger({ deposits: [[address, 1000000000n]], headers: chain(100), params: { exit_wait: 1 } });
+  const ledger = gameLedger({ deposits: [[address, 1000000000n]], headers: chain(100), params: { exit_wait: 1, min_amount: '1' } });
   await ledger.move('unlock', { amount: '1000000000' }, address);
   await ledger.advance(7); await ledger.move('withdraw', {}, address);
   const control = { state: s => s, account: a => a, transfer: p => p, submit: undefined, response: undefined, requests: [], submissions: [] };

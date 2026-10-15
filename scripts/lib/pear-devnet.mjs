@@ -63,6 +63,7 @@ export async function startPearDevnet({ intervalMs = 10000, cleanup = false,
     }
     admin = await launch('indexer', 'indexer', { relayKeys });
     await admin.rpc('params', { key: 'exit_wait', value: 1 });
+    await admin.rpc('params', { key: 'min_amount', value: '1' });
     const settled = result => admin.rpc('settled', { result });
     const sync = async () => {
       const { version } = await admin.rpc('status');

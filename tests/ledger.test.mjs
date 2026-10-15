@@ -34,6 +34,7 @@ test('issuance starts after checkpoint, reserve locked with one/two gateways, ac
 test('lock, unlock, counted-height exit wait, withdraw, transfers and every failure conserve supply',async()=>{
   const l=ledger();
   for(let i=1;i<=3;i++){await l.tx('gw_set',{addr:addr(i),on:true});await l.move('gw_beat',{},addr(i));}
+  assert.equal(await l.tx('params_set',{key:'min_amount',value:'1'}),null);
   assert.equal(await l.tx('params_set',{key:'exit_wait',value:2}),null);assert.equal((await l.view().state()).params.exit_wait,144);
   await l.post(0,6);assert.equal((await l.view().state()).params.exit_wait,2);
   assert.equal(await l.tx('transfer',{to:addr(10),amount:'1000000'}),null);
@@ -55,13 +56,15 @@ test('admin registry, delayed knobs, fresh puzzles and capacity/rate gate all wr
   assert.equal(await l.tx('gw_set',{addr:addr(2),on:true},addr(2)),'admin');
   assert.equal(await l.tx('params_set',{key:'capacity',value:0}),'param');
   assert.equal(await l.move('gw_beat',{},addr(2)),'gateway');
+  await l.tx('params_set',{key:'min_amount',value:'1'});
   await l.tx('params_set',{key:'move_bits',value:0});await l.tx('params_set',{key:'capacity',value:3});await l.tx('params_set',{key:'per_address',value:2});
   for(let i=1;i<=3;i++){await l.tx('gw_set',{addr:addr(i),on:true});await l.move('gw_beat',{},addr(i));}
   await l.post(0,6);
   assert.equal(await l.move('lock',{amount:'1'},addr(1)),null);assert.equal(await l.move('lock',{amount:'1'},addr(1)),null);
   assert.equal(await l.move('lock',{amount:'1'},addr(1)),'rate');assert.equal(await l.move('lock',{amount:'1'},addr(2)),null);
   assert.equal(await l.move('lock',{amount:'1'},addr(3)),'capacity');
-  const before=(await l.view().state()).bits.lock;await l.post(6,7);assert.equal((await l.view().state()).bits.lock,before+1);
+  // Moves that need coins keep the fixed floor; only lottery guesses follow demand.
+  const before=(await l.view().state()).bits.lock;await l.post(6,7);assert.equal((await l.view().state()).bits.lock,before);
   assert.equal(await l.move('lock',{},addr(1),solve('lock',{amount:'1'},checkpoint,addr(1))),'stale');
   assert.equal(await l.move('gw_beat',{},addr(1)),null);assert.equal(await l.move('gw_beat',{},addr(1)),'already_beaten');
   await l.tx('gw_set',{addr:addr(1),on:false});await l.tx('gw_set',{addr:addr(1),on:true});assert.equal((await l.view().state()).gateways[0].active,false);

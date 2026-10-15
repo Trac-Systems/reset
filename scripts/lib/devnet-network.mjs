@@ -89,6 +89,7 @@ export async function startDevnet({ intervalMs = 10000, cleanup = false, pear = 
     for (const peer of writers) await settled(await setupAdmin(admin, {
       gatewayWriter: peer.writerLocalKey, gatewayAddress: peer.wallet.publicKey }));
     await settled(await admin.protocol.instance.tx({ command: JSON.stringify({ op: 'params_set', key: 'exit_wait', value: 1 }) }));
+    await settled(await admin.protocol.instance.tx({ command: JSON.stringify({ op: 'params_set', key: 'min_amount', value: '1' }) }));
     await until(() => writers.every(p => p.base.writable), 'three admitted writers');
     const sync = async () => {
       const version = admin.base.view.version;

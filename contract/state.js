@@ -44,7 +44,9 @@ export class StateTransition {
     const bits = {};
     for (const t of TYPES) bits[t] = PUZZLE_TYPES.includes(t) ? await this.get(`diff/${t}`) ?? minimumBits(t, params) : 0;
     const tip = head.tip;
-    return { tip, counted: head.counted, bits, capacity_left: Math.max(0, params.capacity - (await this.get(`load/${tip.height}`) ?? 0)),
+    const capacityByType = {};
+    for (const t of PUZZLE_TYPES) capacityByType[t] = Math.max(0, params.capacity - (await this.get(`load/${tip.height}/${t}`) ?? 0));
+    return { tip, counted: head.counted, bits, capacity_left: Math.max(...Object.values(capacityByType)), capacity_by_type: capacityByType,
       per_address: params.per_address, params, gateways: (await this.gateways()).map(g => ({ ...g, active: g.registered && g.last_beat === tip.height })),
       ...await this.games.state(tip.height, params) };
   }
@@ -56,7 +58,7 @@ export class StateTransition {
     const tip = head.tip.height;
     const params = await this.params(tip);
     const account = await this.account(address, false, tip);
-    const load = await this.get(`load/${tip}`) ?? 0;
+    const load = await this.get(`load/${tip}/${e.t}`) ?? 0;
     const error = checkMove(e, address, { tip, hash: head.hashAt(e.b), params, balance: account.balance, deposit: account.deposit,
       exits: account.exits, counted: head.counted, addressLoad: account.moves_this_height, load,
       bits: await this.get(`diff/${e.t}`) ?? minimumBits(e.t, params), gateway: await this.get(`gw/${address}`) });
@@ -68,7 +70,8 @@ export class StateTransition {
       if (result.accepted === 0) return 'header_known';
       // Activity/demand are frozen at the pre-message tip for the whole batch.
       const active = (await this.gateways()).filter(g => g.registered && g.last_beat === tip).map(g => g.addr);
-      for (const block of result.counted) await this.count(block, active, load);
+      const guessLoad = await this.get(`load/${tip}/guess`) ?? 0;
+      for (const block of result.counted) await this.count(block, active, guessLoad);
       this.put('beacon/state', beacon.exportState({ compact: true }));
       for (const block of result.counted) this.put(`hash/${block.height}`, block.hash);
       const checkpoint = this.beaconOptions.checkpoint ?? GENESIS;
@@ -90,14 +93,14 @@ export class StateTransition {
       } else if (e.t === 'guess') {
         const error = await this.games.guess(e.p, address, tip, params); if (error) return error;
       } else if (e.t === 'claim') {
-        const error = await this.games.claim(e.p, address, tip, account.deposit); if (error) return error;
+        const error = await this.games.claim(e.p, address, tip, account.deposit, params); if (error) return error;
       } else {
         if (await this.games.pendingClaim(address, head.counted)) return 'claim_pending';
         const released = account.exits.filter(x => x.release <= head.counted);
         await this.add(`bal/${address}`, released.reduce((sum, x) => sum + BigInt(x.amount), 0n));
         this.put(`exit/${address}`, account.exits.filter(x => x.release > head.counted));
       }
-      this.put(`load/${tip}`, load + 1);
+      this.put(`load/${tip}/${e.t}`, load + 1);
       this.put(`rate/${tip}/${address}`, account.moves_this_height + 1);
     }
     return null;
@@ -108,7 +111,10 @@ export class StateTransition {
     const pending = await this.get('params/pending');
     const params = { ...current, ...pending };
     if (pending) { this.put('params/current', params); this.put('params/pending', null); }
-    for (const t of PUZZLE_TYPES) this.put(`diff/${t}`, adjustDifficulty(await this.get(`diff/${t}`) ?? minimumBits(t, current), minimumBits(t, params), demand, params.capacity));
+    // Only lottery guesses (open to any address) follow demand. Moves that need coins keep the fixed floor.
+    for (const t of PUZZLE_TYPES) this.put(`diff/${t}`, t === 'guess'
+      ? adjustDifficulty(await this.get(`diff/${t}`) ?? minimumBits(t, current), minimumBits(t, params), demand, params.capacity)
+      : minimumBits(t, params));
     if (block.height < params.lottery_start_block) {
       // Before the coin starts the clock runs but nothing is minted.
       this.put(`cnt/${block.height}`, { hash: block.hash, poster: block.poster, minted: '0' });

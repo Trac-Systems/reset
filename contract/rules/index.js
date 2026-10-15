@@ -8,7 +8,9 @@ export { stableJSON, stableStringify, parseJSON } from './json.js';
 export const ADDRESS = /^[0-9a-f]{64}$/;
 export const TYPES = ['header', 'lock', 'unlock', 'withdraw', 'gw_beat', 'guess', 'claim'];
 export const PUZZLE_TYPES = ['lock', 'unlock', 'withdraw', 'guess', 'claim'];
-export const DEFAULT_PARAMS = Object.freeze({ move_bits: 12, capacity: 600, per_address: 6, exit_wait: 144, ...LOTTERY_DEFAULTS, ...MINE_DEFAULTS });
+// min_amount: smallest lock/unlock amount and smallest deposit that may claim (0.1 coin), so the move lanes
+// cannot be filled with dust from many addresses.
+export const DEFAULT_PARAMS = Object.freeze({ move_bits: 12, capacity: 600, per_address: 6, exit_wait: 144, min_amount: '10000000', ...LOTTERY_DEFAULTS, ...MINE_DEFAULTS });
 export const minimumBits = (t, params) => t === 'guess' ? params.guess_bits : params.move_bits;
 export const MAX_AMOUNT_LENGTH = 78;
 export const MAX_EXIT_RECORDS = 256;
@@ -67,6 +69,7 @@ export const adjustDifficulty = (current, minimum, moves, capacity) =>
   Math.max(minimum, Math.min(32, current + (moves * 2 > capacity ? 1 : moves * 8 < capacity ? -1 : 0)));
 export function validParam(key, value) {
   if (validGameParam(key, value)) return true;
+  if (key === 'min_amount') return typeof value === 'string' && /^[1-9][0-9]{0,15}$/.test(value);
   if (!Number.isSafeInteger(value)) return false;
   return key === 'move_bits' ? value >= 0 && value <= 32 :
     key === 'capacity' ? value >= 1 && value <= 100000 :
@@ -80,8 +83,10 @@ export function checkMove(e, address, view) {
   if (e.t === 'gw_beat') return !view.gateway?.registered ? 'gateway' :
     view.gateway.last_beat === view.tip ? 'already_beaten' : null;
   if (!checkPuzzle(address, e, view.bits)) return 'puzzle';
+  // Each move type has its own lane: spam of one type cannot fill another type's capacity.
   if (view.load >= view.params.capacity) return 'capacity';
   if (view.addressLoad >= view.params.per_address) return 'rate';
+  if ((e.t === 'lock' || e.t === 'unlock') && BigInt(e.p.amount) < BigInt(view.params.min_amount ?? '10000000')) return 'amount';
   if (e.t === 'lock' && BigInt(view.balance) < BigInt(e.p.amount)) return 'balance';
   if (e.t === 'unlock' && BigInt(view.deposit) < BigInt(e.p.amount)) return 'deposit';
   if (e.t === 'unlock' && view.exits.length >= MAX_EXIT_RECORDS &&

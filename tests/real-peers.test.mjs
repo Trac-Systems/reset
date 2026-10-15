@@ -47,6 +47,7 @@ test('local DHT peers and real MSB: non-writer mining, censorship, replay, limit
   await adminTx('params_set',{key:'move_bits',value:0});
   await adminTx('params_set',{key:'capacity',value:8});
   await adminTx('params_set',{key:'per_address',value:4});
+  await adminTx('params_set',{key:'min_amount',value:'1'});
   const sync=async()=>{
     const version=admin.base.view.version;
     await until(async()=>{await Promise.all([g1.base.update(),g2.base.update(),reader.base.update()]);return [g1,g2,reader].every(p=>p.base.view.version>=version);},'subnet reader synchronization');
@@ -181,7 +182,7 @@ test('local DHT peers and real MSB: non-writer mining, censorship, replay, limit
       const raw=(await g1.base.local.get(i))?.node?.value;
       if(raw && c.decode(g1.base.valueEncoding,raw)?.type==='msg')messages++;
     }
-    assert.equal(messages,8);await until(async()=>((await admin.protocol.instance.api.coinState()).capacity_left===0),'burst replicated');await sync();
+    assert.equal(messages,8);await until(async()=>((await admin.protocol.instance.api.coinState()).capacity_by_type.lock===0),'burst replicated');await sync();
     assert.equal((await one.api.coinAccount(player.publicKey)).moves_this_height,4);assert.equal((await one.api.coinAccount(other.publicKey)).moves_this_height,4);
     await entries(reader);
   });

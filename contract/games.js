@@ -34,9 +34,9 @@ export class GameState {
     s.put('lottery/locked', true);
     return null;
   }
-  async claim(p, address, tip, deposit) {
+  async claim(p, address, tip, deposit, params) {
     const s = this.s, seen = `mine/seen/${p.r}/${address}`;
-    const error = checkClaim(p, tip, this.checkpoint, deposit, await s.get(seen));
+    const error = checkClaim(p, tip, this.checkpoint, deposit, await s.get(seen), params?.min_amount);
     if (error) return error;
     const key = `mine/round/${p.r}`;
     const round = await s.get(key) ?? { count: 0, deposit: '0' };

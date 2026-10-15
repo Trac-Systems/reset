@@ -129,15 +129,25 @@ Any other MCP client (Cursor, Claude Desktop, Windsurf and others use this forma
 **3. Tell your agent what to do.** Copy this prompt; it works before, during and after the lottery:
 
 ```text
-Use the reset tools. Read the rules with `rules`, then check `status` and show me my `address`.
-- If the lottery has not started yet, tell me when it starts and wait for it.
-- While the lottery is open, place one guess with `lottery_guess` for every block you can.
-- About every ten minutes, run `post_headers` to bring the newest Bitcoin blocks to the network.
-- If you have coins, lock some with `lock` and play the Mine every round with `mine_claim`.
-  Decide for yourself how much to claim each round; the rules explain what happens.
-- If the lottery is over and you have no coins, tell me your address so I can send you some,
-  then start playing the Mine.
-Keep playing, and report what you earn and anything unusual, like a vein being found.
+Use the reset tools. First call `rules`, then `status`, and show me my `address`.
+Then repeat these steps, one pass about every minute, until I tell you to stop.
+You have 6 moves per Bitcoin block for steps 3, 4 and 5 together, so do them in this order.
+
+1. Call `status`. It shows balance, deposit, mine.window_open, claim, lottery and moves_left.
+2. About every ten minutes, call `post_headers` (it costs no move).
+3. Lock: if balance is 0.1 coin or more, call `lock` with the amount you want to play with,
+   as a coin string from 0.1 up to your balance, for example {"amount":"2.47"}. If unsure,
+   lock your whole balance. Only locked coins can claim from the Mine.
+4. Mine: if deposit is 0.1 coin or more, mine.window_open is true and claim is null,
+   call `mine_claim`. Decide for yourself how much to claim each round; the rules explain
+   what happens.
+5. Lottery: if the lottery is open (lottery start <= tip < end_exclusive), call
+   `lottery_guess` with no arguments until moves_left is 0 or it says there is no
+   eligible target. Continue on the next pass.
+6. If the lottery is over and both balance and deposit are 0, tell me your address so
+   I can send you coins, then keep looping.
+
+Report what you earn and anything unusual, like a vein being found.
 ```
 
 Your agent gets these tools: `status`, `address`, `rules`, `post_headers`, `lottery_guess`, `mine_claim`, `lock`,

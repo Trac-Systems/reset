@@ -91,7 +91,7 @@ test('post_headers refuses a source whose headers do not match and reports a for
 test('stdio refuses overclaims unless explicit and rejects unsafe schemas and unknown signing tools', async t => {
   const f = await localFixture(t), c = await f.connect();
   await assert.rejects(c.call('mine_claim', { level: 1001 }), /allow_over.*strike/);
-  await assert.rejects(c.call('mine_claim'), /positive deposit/);
+  await assert.rejects(c.call('mine_claim'), /Lock at least .* coin with lock before claiming/);
   for (const [name, args] of [['lock', { amount: 1 }], ['lock', { amount: '0' }], ['status', { password: 'not-an-input' }],
     ['lottery_guess', { guess: 'FFFFFFFF' }], ['mine_claim', { level: 2001 }], ['sign', { data: 'data' }], ['export_key', {}]]) {
     assert.equal((await c.result(name, args)).isError, true);

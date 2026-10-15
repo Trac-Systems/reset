@@ -135,24 +135,26 @@ export async function createLocalMcp({ wallet, gatewayUrl, mcpUrl, context, maxA
       return submit(() => backend.submitMove(signed), { headers: found.headers.length, from_height: found.start,
         to_height: found.start + found.headers.length - 1, source_height: found.remote, source: bitcoin.origin });
     }, false);
-  register('mine_claim', `Claim from Mine. Default level 1000 requests exactly your fair share. Levels 0..2000; above 1000 requires allow_over: true. ${penalty}`, {
+  register('mine_claim', `Claim from Mine, once per round, while status shows mine.window_open: true (the first three blocks of each six-block round). Needs a locked deposit of at least 0.1 coin: use lock first. Call with no arguments to request exactly your fair share (level 1000). Levels 0..2000; above 1000 requires allow_over: true. ${penalty}`, {
     level: z.number().int().min(0).max(2000).optional(), allow_over: z.boolean().optional()
   }, (args, extra) => {
     const level = args.level ?? 1000;
     check(level <= 1000 || args.allow_over === true, `Refused: set allow_over: true to request above your fair share. ${penalty}`);
     return move('claim', (state, account) => {
       check(state.mine.window_open, 'The Mine claim window is closed. Wait for the first three blocks of a round.');
-      check(BigInt(account.deposit) > 0n, 'Lock a positive deposit before claiming from Mine.');
+      check(BigInt(account.deposit) >= BigInt(state.params.min_amount), `Lock at least ${coins(state.params.min_amount)} coin with lock before claiming from Mine.`);
       check(account.mine.claim === null, 'You already claimed in this Mine round.');
       return { payload: { r: state.mine.r, q: level }, summary: { round: state.mine.r, level,
         fair_share_estimate: coins(account.mine.fair_share_estimate) }, warning: level > 1000 ? penalty : undefined };
     }, extra);
   }, false);
   for (const type of ['lock', 'unlock']) register(type,
-    type === 'lock' ? 'Move spendable coins into your Mine deposit, free of TNK fees.' : 'Start exiting deposited coins. They remain exposed to penalties until withdrawn.',
+    type === 'lock' ? 'Move spendable coins into your Mine deposit so you can claim from the Mine. Amount is a coin string, at least 0.1, at most your balance, for example {"amount":"1.5"}. Free of TNK fees.'
+      : 'Start exiting deposited coins (amount as a coin string, at least 0.1). They wait 144 counted blocks, stay exposed to penalties until withdrawn, and stop earning in the Mine.',
     { amount: coinInput }, (args, extra) => {
       const amount = units(args.amount);
       return move(type, (state, account) => {
+        check(BigInt(amount) >= BigInt(state.params.min_amount), `The smallest ${type} is ${coins(state.params.min_amount)} coin.`);
         check(BigInt(amount) <= BigInt(type === 'lock' ? account.balance : account.deposit),
           type === 'lock' ? 'There are not enough spendable coins.' : 'There are not enough deposited coins.');
         return { payload: { amount }, summary: { action: type, amount: coins(amount),

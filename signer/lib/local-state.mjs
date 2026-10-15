@@ -20,7 +20,8 @@ const hash = z.string().regex(/^[0-9a-f]{64}$/);
 const stateSchema = z.object({
   tip: z.object({ height: integer, hash }), counted: integer,
   bits: z.record(z.string(), integer.max(32)), capacity_left: integer, per_address: integer.positive(),
-  params: z.object({ capacity: integer.positive(), per_address: integer.positive(), exit_wait: integer.positive() }),
+  params: z.object({ capacity: integer.positive(), per_address: integer.positive(), exit_wait: integer.positive(),
+    min_amount: z.string().regex(/^[1-9][0-9]{0,15}$/) }),
   lottery: z.object({ start: integer.positive(), end: integer.positive(), blocks: integer.positive(), winners: integer.positive(),
     open_targets: z.array(z.object({ tb: integer, guesses: integer, accepting: z.boolean(), capacity_left: integer })).max(2016) }),
   mine: z.object({ r: integer, start: integer, claim_end: integer, end: integer, window_open: z.boolean(),

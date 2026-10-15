@@ -141,8 +141,8 @@ MCP remains keyless and keeps the low-level §7a interface.
 | `address` | `{}` | Own public hex address |
 | `post_headers` | `{}` | Fetch up to 20 headers after the network tip from a Bitcoin REST source (`--header-source`, default mempool.space), check hashes and links, post one `header` move; if the source disagrees with the tip, start after the counted height |
 | `lottery_guess` | `{target?,guess?}` | Default next eligible target, skipping full targets and this process's accepted guesses; random eight-lowercase-hex guess |
-| `mine_claim` | `{level?,allow_over?}` | Default 1000, exactly the eventual fair share; integer 0..2000; levels above 1000 require `allow_over:true` and show the excess-times-strikes penalty |
-| `lock`, `unlock` | `{amount}` | Move spendable coins into deposit, or start exiting deposit |
+| `mine_claim` | `{level?,allow_over?}` | Once per round while `mine.window_open`, with a deposit of at least `min_amount` (0.1 coin); default 1000, exactly the eventual fair share; integer 0..2000; levels above 1000 require `allow_over:true` and show the excess-times-strikes penalty |
+| `lock`, `unlock` | `{amount}` | Move spendable coins into deposit, or start exiting deposit; at least `min_amount` (0.1 coin), checked locally before signing |
 | `withdraw` | `{}` | Withdraw all mature exits, subject to unsettled-claim protection |
 | `transfer` | `{to,amount}` | Show exact sender/recipient/amount and own-MSB TNK fee source before checked signing and submission |
 | `rules` | `{}` | Plain-language rules |

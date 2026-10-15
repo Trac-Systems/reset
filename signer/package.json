@@ -1,0 +1,34 @@
+{
+  "name": "reset-signer",
+  "version": "0.1.0",
+  "description": "Local encrypted wallet and checked signing for RESET",
+  "type": "module",
+  "engines": {
+    "node": ">=23.11.0"
+  },
+  "bin": {
+    "reset-signer": "bin/reset-signer.mjs"
+  },
+  "exports": {
+    ".": "./lib/index.mjs",
+    "./wire": "./lib/wire.mjs",
+    "./pow": "./lib/pow.mjs"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "dashboard",
+    "networks",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "bench": "node scripts/bench.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@noble/hashes": "2.4.0",
+    "trac-wallet": "2.1.0",
+    "zod": "4.6.7"
+  }
+}

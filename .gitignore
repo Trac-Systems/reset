@@ -1,0 +1,12 @@
+stores
+node_modules
+.npm-cache
+.test-tmp
+skill-oc.md
+skill-sc.md
+.npm-cache/
+.test-tmp/
+*.tgz
+.devnet/
+.idea/
+.rehearsal/

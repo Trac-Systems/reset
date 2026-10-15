@@ -1,0 +1,18 @@
+import http from 'http';
+import Gateway from '../../features/gateway/index.js';
+import { HeaderSource } from '../../features/gateway/header-source.js';
+import { BitcoinBeacon } from '../../contract/beacon/bitcoin.js';
+import { sha256Hex } from '../../contract/rules/index.js';
+const beacon=new BitcoinBeacon();
+if(sha256Hex('abc')!=='ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad')throw new Error('hash');
+const api={msgExposed:()=>true,txExposed:()=>true,coinState:async()=>({tip:beacon.tip(),counted:0})};
+const gateway=new Gateway({protocol:{instance:{api}}},{port:0,autoBeat:false});
+await gateway.start();
+const sourceServer=http.createServer((req,res)=>res.end('42'));
+await new Promise(resolve=>sourceServer.listen(0,'127.0.0.1',resolve));
+const source=new HeaderSource(`http://127.0.0.1:${sourceServer.address().port}`);
+if(await source.height()!==42)throw new Error('header source');
+await new Promise(resolve=>sourceServer.close(resolve));
+console.log(JSON.stringify({url:gateway.url,runtime:Bare.version}));
+const timer=setTimeout(async()=>{await gateway.stop();Bare.exit(0);},3000);
+timer.unref?.();

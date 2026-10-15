@@ -1,0 +1,15 @@
+{
+  "environment": "development",
+  "msbBootstrap": "REPLACE_WITH_APPROVED_MSB_BOOTSTRAP_HEX",
+  "msbChannel": "REPLACE_WITH_APPROVED_MSB_CHANNEL",
+  "msbDhtBootstrap": [
+    "127.0.0.1:49737"
+  ],
+  "peerDhtBootstrap": [
+    "127.0.0.1:49737"
+  ],
+  "subnetBootstrap": null,
+  "subnetChannel": "relay-private-transport",
+  "relayKeys": [],
+  "storeDirectory": "/srv/reset/relay"
+}

@@ -1,0 +1,9 @@
+{
+  "gatewayUrl": "https://reset.openmayhem.ai",
+  "context": {
+    "networkId": 918,
+    "incomingWritingKey": "094153f967c516410b48f51d3a7912702c02adbea5c59560dd26785bd922bc87",
+    "subnetBootstrap": "d358f737a81b778b7148e21d5cc75976e3fedcc697c78f0cc183a23e81d834f1",
+    "msbBootstrap": "acbc3a4344d3a804101d40e53db1dda82b767646425af73599d4cd6577d69685"
+  }
+}

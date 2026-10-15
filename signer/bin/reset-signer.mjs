@@ -1,0 +1,104 @@
+#!/usr/bin/env node
+import { open } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { parseArgs } from 'node:util';
+import { ReadStream, WriteStream } from 'node:tty';
+import { init, importMnemonic, getAddress, unlock, wipeWallet, signAndSolve, signTransfer, signChallenge, verify } from '../lib/index.mjs';
+
+async function secretPrompt(label, input = process.stdin, output = process.stderr) {
+  if (!input.isTTY || !output.isTTY) throw new Error('Set RESET_SIGNER_PASSWORD or use an interactive terminal');
+  output.write(label);
+  input.setRawMode(true); input.resume(); input.setEncoding('utf8');
+  return new Promise((resolve, reject) => {
+    let value = '';
+    const finish = (error) => {
+      input.off('data', onData); input.setRawMode(false); input.pause();
+      output.write('\n'); error ? reject(error) : resolve(value);
+    };
+    const onData = chunk => {
+      for (const c of chunk) {
+        if (c === '\u0003' || c === '\u0004') { finish(new Error('Cancelled')); return; }
+        if (c === '\r' || c === '\n') { finish(); return; }
+        if (c === '\u007f' || c === '\b') value = value.slice(0, -1);
+        else if (c >= ' ') value += c;
+      }
+    };
+    input.on('data', onData);
+  });
+}
+async function terminalPassword() {
+  // MCP owns stdin/stdout. Prompt only on the controlling terminal, when present.
+  let terminal;
+  try { terminal = await open('/dev/tty', constants.O_RDWR); }
+  catch { throw new Error('Set RESET_SIGNER_PASSWORD locally; no controlling terminal is available for a hidden prompt.'); }
+  const input = new ReadStream(terminal.fd, { autoClose: false });
+  const output = new WriteStream(terminal.fd);
+  try { return await secretPrompt('Keystore password: ', input, output); }
+  finally { input.setRawMode(false); input.pause(); input.destroy(); output.destroy(); await terminal.close(); }
+}
+async function readJSON(path) {
+  if (!path) throw new Error('JSON file required');
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const st = await file.stat();
+    if (!st.isFile() || st.size > 65536) throw new Error('JSON input must be a regular file of at most 64 KiB');
+    return JSON.parse(await file.readFile('utf8'));
+  } finally { await file.close(); }
+}
+async function main() {
+  if (process.argv[2] === 'dashboard') return (await import('../dashboard/index.mjs')).cli(process.argv.slice(3));
+  const { values, positionals } = parseArgs({ allowPositionals: true, options: {
+    directory: { type: 'string' }, state: { type: 'string' }, context: { type: 'string' },
+    audience: { type: 'string' }, 'max-attempts': { type: 'string' }, help: { type: 'boolean' },
+    gateway: { type: 'string' }, 'mcp-url': { type: 'string' }, 'max-work-ms': { type: 'string' }
+  } });
+  const [command, file] = positionals;
+  if (values.help || !command) return { commands: ['init', 'import', 'address', 'sign_and_solve <move.json> --state <state.json>',
+    'sign_transfer <prepared.json> --context <trusted-context.json>', 'sign_challenge <challenge.json> --audience <origin>', 'verify <signed.json>',
+    'mcp --gateway <trusted-origin> [--mcp-url <hosted-origin>] [--context <trusted-context.json>]'],
+    password: 'RESET_SIGNER_PASSWORD or hidden prompt', mnemonic: 'RESET_SIGNER_MNEMONIC or hidden prompt for import' };
+  if (positionals.length > 2) throw new Error('Unexpected arguments');
+  if (!['init', 'import', 'address', 'sign_and_solve', 'sign_transfer', 'sign_challenge', 'verify', 'mcp'].includes(command)) throw new Error('Unknown command');
+  if (command === 'mcp') {
+    if (file || values.state || values.audience) throw new Error('Unexpected MCP arguments');
+    const { createLocalMcp } = await import('../lib/local-mcp.mjs');
+    // Without explicit settings the local MCP plays on the public RESET mainnet (signer/networks/mainnet.json).
+    const mainnet = await readJSON(new URL('../networks/mainnet.json', import.meta.url));
+    const contextFile = values.context || process.env.RESET_SIGNER_CONTEXT || undefined;
+    const gatewayDefault = values.gateway || process.env.RESET_GATEWAY_URL || ((values['mcp-url'] || process.env.RESET_MCP_URL) ? undefined : mainnet.gatewayUrl);
+    const context = contextFile ? await readJSON(contextFile) : (gatewayDefault === mainnet.gatewayUrl ? mainnet.context : undefined);
+    let password = process.env.RESET_SIGNER_PASSWORD ?? await terminalPassword();
+    const wallet = await unlock({ directory: values.directory ?? process.env.RESET_SIGNER_DIRECTORY, password });
+    password = undefined; delete process.env.RESET_SIGNER_PASSWORD; delete process.env.RESET_SIGNER_MNEMONIC;
+    let service;
+    try {
+      service = await createLocalMcp({ wallet, context, gatewayUrl: gatewayDefault,
+        mcpUrl: values['mcp-url'] ?? process.env.RESET_MCP_URL,
+        maxAttempts: Number(values['max-attempts'] ?? process.env.RESET_SIGNER_MAX_ATTEMPTS ?? 10000000),
+        maxWorkMs: Number(values['max-work-ms'] ?? process.env.RESET_SIGNER_MAX_WORK_MS ?? 90000) });
+      await service.run();
+    } finally { try { await service?.close(); } finally { wipeWallet(wallet); } }
+    return;
+  }
+  const options = { state: values.state ? await readJSON(values.state) : undefined,
+    context: values.context ? await readJSON(values.context) : undefined, audience: values.audience,
+    maxAttempts: values['max-attempts'] ? Number(values['max-attempts']) : undefined };
+  if (command === 'verify') return { valid: verify(await readJSON(file), options) };
+  const password = process.env.RESET_SIGNER_PASSWORD ?? await secretPrompt('Keystore password: ');
+  const storage = { directory: values.directory, password };
+  if (command === 'init') return init(storage);
+  if (command === 'import') return importMnemonic({ ...storage, mnemonic: process.env.RESET_SIGNER_MNEMONIC ?? await secretPrompt('Mnemonic: ') });
+  if (command === 'address') return getAddress(storage);
+  const packet = await readJSON(file);
+  const wallet = await unlock(storage);
+  try {
+    if (command === 'sign_and_solve') return await signAndSolve(wallet, packet, options);
+    if (command === 'sign_transfer') return signTransfer(wallet, packet, options);
+    return signChallenge(wallet, packet, options);
+  } finally { wipeWallet(wallet); }
+}
+try { const result = await main(); if (result !== undefined) process.stdout.write(JSON.stringify(result) + '\n'); }
+catch (error) {
+  (process.argv.includes('mcp') ? process.stderr : process.stdout).write(JSON.stringify({ error: error.message }) + '\n');
+  process.exitCode = 1;
+}

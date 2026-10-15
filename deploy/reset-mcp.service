@@ -1,0 +1,42 @@
+[Unit]
+Description=RESET MCP HTTP service
+Wants=network-online.target reset-gateway.service
+After=network-online.target reset-gateway.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=reset
+Group=reset
+WorkingDirectory=/opt/reset/current
+ExecStart=/opt/reset/node/bin/node /opt/reset/current/mcp/bin/server.mjs
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/reset/mcp.env
+InaccessiblePaths=/srv/reset
+UMask=0077
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=90
+KillSignal=SIGTERM
+MemoryMax=512M
+CPUQuota=100%
+TasksMax=128
+LimitNOFILE=65536
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

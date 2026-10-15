@@ -1,0 +1,65 @@
+The recipe below is a complete deterministic client loop. A scripted
+client can execute it using this recipe, the separate public docs/llms.txt rules,
+and operator-supplied inputs:
+mcpUrl (origin, without /mcp), gatewayUrl (trusted origin), keystore (local),
+contextFile (trusted local transfer context), recipient (hex public key), and a
+local signer password. Login HTTP paths are relative to mcpUrl. Only public data,
+prepared messages and signatures cross HTTP/MCP. The password stays local.
+
+Recipe v1 notation: $name.path reads a saved result or inputs; local invokes the
+reviewed reset-signer CLI, saves input JSON, and supplies --directory locally.
+flags.state saves that snapshot as JSON; flags.context names the already trusted
+file. http fetches JSON, connect starts Streamable HTTP with Bearer token, tool
+calls an MCP tool, save names the result, check must hold, and wait repeats reads
+until its predicate holds. Before signing a move, repeat preparation, review and
+trusted-state reads until the packet’s block height/hash equal that snapshot.
+The clock can advance between two HTTP reads; never weaken signer checks to
+accept mismatched reads. These retries happen before signing or submission.
+add/subtract compute integer-unit strings; eq compares
+exactly, gte compares integers, all combines predicates, every/some evaluate array
+members as $item. text means a tool result is plain text. An error stops the smoke
+check; for interactive use refresh state and preparation before retrying a rejected
+move, and inspect account changes before retrying an uncertain submission. A
+successful submission is not finality. Re-login on token expiry. Never resubmit a
+new transfer until an uncertain earlier transfer has been checked for settlement.
+
+BEGIN CLIENT PLAN
+{
+  "v": 1,
+  "steps": [
+    {"local":{"command":"address"},"save":"identity"},
+    {"http":{"base":"$inputs.mcpUrl","path":"/auth/challenge","body":{"address":"$identity.address"}},"save":"challenge"},
+    {"local":{"command":"sign_challenge","input":"$challenge","flags":{"audience":"$inputs.mcpUrl"}},"save":"loginSignature"},
+    {"http":{"base":"$inputs.mcpUrl","path":"/auth/login","body":"$loginSignature"},"save":"login"},
+    {"connect":{"path":"/mcp","token":"$login.token"}},
+    {"tool":"reset_rules","text":true,"save":"rules"},
+    {"check":{"eq":["$rules","$instructions"]},"label":"served instructions match the supplied text"},
+    {"tool":"reset_account","save":"initial"},
+    {"tool":"reset_account","args":{"address":"$inputs.recipient"},"save":"recipientInitial"},
+    {"check":{"all":[{"gte":["$initial.balance","13"]},{"eq":["$initial.exits.length",0]}]},"label":"funded fresh local test player"},
+    {"wait":{"label":"coherent lock preparation and trusted state","reads":[{"tool":"reset_prepare_move","args":{"t":"lock","p":{"amount":"10"}},"save":"packet"},{"check":{"all":[{"eq":["$packet.envelope.t","lock"]},{"eq":["$packet.envelope.p.amount","10"]}]},"label":"review requested move before signing"},{"http":{"base":"$inputs.gatewayUrl","path":"/v1/state"},"save":"trustedState"}],"until":{"all":[{"eq":["$packet.envelope.b","$trustedState.tip.height"]},{"eq":["$packet.envelope.h","$trustedState.tip.hash"]}]},"pollMs":100,"timeoutMs":10000}},
+    {"local":{"command":"sign_and_solve","input":"$packet","flags":{"state":"$trustedState"}},"save":"signed"},
+    {"tool":"reset_submit_move","args":"$signed","save":"submission"},
+    {"check":{"eq":["$submission.ok",true]},"label":"lock accepted"},
+    {"wait":{"label":"lock applied","reads":[{"tool":"reset_account","save":"current"}],"until":{"eq":["$current.deposit",{"add":["$initial.deposit","10"]}]},"pollMs":3000,"timeoutMs":240000}},
+    {"wait":{"label":"coherent unlock preparation and trusted state","reads":[{"tool":"reset_prepare_move","args":{"t":"unlock","p":{"amount":"10"}},"save":"packet"},{"check":{"all":[{"eq":["$packet.envelope.t","unlock"]},{"eq":["$packet.envelope.p.amount","10"]}]},"label":"review requested move before signing"},{"http":{"base":"$inputs.gatewayUrl","path":"/v1/state"},"save":"trustedState"}],"until":{"all":[{"eq":["$packet.envelope.b","$trustedState.tip.height"]},{"eq":["$packet.envelope.h","$trustedState.tip.hash"]}]},"pollMs":100,"timeoutMs":10000}},
+    {"local":{"command":"sign_and_solve","input":"$packet","flags":{"state":"$trustedState"}},"save":"signed"},
+    {"tool":"reset_submit_move","args":"$signed","save":"submission"},
+    {"check":{"eq":["$submission.ok",true]},"label":"unlock accepted"},
+    {"wait":{"label":"unlock applied","reads":[{"tool":"reset_account","save":"current"}],"until":{"some":{"in":"$current.exits","where":{"eq":["$item.amount","10"]}}},"pollMs":3000,"timeoutMs":240000}},
+    {"wait":{"label":"exits mature at counted height","reads":[{"tool":"reset_account","save":"current"},{"tool":"reset_state","save":"state"}],"until":{"every":{"in":"$current.exits","where":{"gte":["$state.counted","$item.release"]}}},"pollMs":3000,"timeoutMs":240000}},
+    {"wait":{"label":"coherent withdraw preparation and trusted state","reads":[{"tool":"reset_prepare_move","args":{"t":"withdraw","p":{}},"save":"packet"},{"check":{"all":[{"eq":["$packet.envelope.t","withdraw"]}]},"label":"review requested move before signing"},{"http":{"base":"$inputs.gatewayUrl","path":"/v1/state"},"save":"trustedState"}],"until":{"all":[{"eq":["$packet.envelope.b","$trustedState.tip.height"]},{"eq":["$packet.envelope.h","$trustedState.tip.hash"]}]},"pollMs":100,"timeoutMs":10000}},
+    {"local":{"command":"sign_and_solve","input":"$packet","flags":{"state":"$trustedState"}},"save":"signed"},
+    {"tool":"reset_submit_move","args":"$signed","save":"submission"},
+    {"check":{"eq":["$submission.ok",true]},"label":"withdraw accepted"},
+    {"wait":{"label":"withdraw applied","reads":[{"tool":"reset_account","save":"current"}],"until":{"all":[{"eq":["$current.balance","$initial.balance"]},{"eq":["$current.exits.length",0]},{"eq":["$current.deposit","$initial.deposit"]}]},"pollMs":3000,"timeoutMs":240000}},
+    {"tool":"reset_prepare_transfer","args":{"to":"$inputs.recipient","amount":"3"},"save":"packet"},
+    {"check":{"all":[{"eq":["$packet.to","$inputs.recipient"]},{"eq":["$packet.amount","3"]},{"eq":["$packet.address","$identity.address"]}]},"label":"review recipient, amount and sender before signing"},
+    {"local":{"command":"sign_transfer","input":"$packet","flags":{"context":"$inputs.contextFile"}},"save":"signed"},
+    {"tool":"reset_submit_transfer","args":"$signed","save":"submission"},
+    {"check":{"eq":["$submission.ok",true]},"label":"transfer submitted"},
+    {"wait":{"label":"transfer settled","reads":[{"tool":"reset_account","save":"current"},{"tool":"reset_account","args":{"address":"$inputs.recipient"},"save":"recipientCurrent"}],"until":{"all":[{"eq":["$current.balance",{"subtract":["$initial.balance","3"]}]},{"eq":["$recipientCurrent.balance",{"add":["$recipientInitial.balance","3"]}]}]},"pollMs":3000,"timeoutMs":240000}}
+  ],
+  "result": {"address":"$identity.address","balance":"$current.balance","recipientBalance":"$recipientCurrent.balance"}
+}
+END CLIENT PLAN

@@ -94,6 +94,7 @@ export async function runConfiguredPeer(flags) {
     }
     if (role === 'gateway') {
       gateway = new Gateway(peer, { port: config.gatewayPort ?? 49223, headerSource: config.headerSource ?? 'off', trustProxy: config.trustProxy === true,
+        ...(config.headerDelayMs !== undefined ? { headerDelayMs: config.headerDelayMs } : {}),
         ...(devnet ? { pollMs: 100, ipLimit: 10000, addressLimit: 10000 } : {}) });
       await peer.protocol.instance.addFeature('gateway', gateway); await gateway.start();
     }

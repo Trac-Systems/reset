@@ -16,6 +16,8 @@ export const MAX_AMOUNT_LENGTH = 78;
 export const MAX_EXIT_RECORDS = 256;
 export const ISSUANCE = 312500000n;
 export const GATEWAY_SHARE = 3125000n;
+// 10 % of the gateway share goes to the first poster of each counted Bitcoin header, from the first coin block on.
+export const POSTER_SHARE = 312500n;
 export const sha256Hex = input => crypto.createHash('sha256').update(input).digest('hex');
 export function countLeadingZeroBits(hex) {
   let bits = 0;
@@ -101,7 +103,10 @@ export function payout(reserve, gateways, poster) {
   let nextReserve = reserve;
   const credits = {};
   let released = 0n;
-  if (active.length < 3) nextReserve += GATEWAY_SHARE;
+  if (active.length < 3) {
+    nextReserve += GATEWAY_SHARE - POSTER_SHARE;
+    credits[poster] = POSTER_SHARE.toString();
+  }
   else {
     const n = BigInt(active.length);
     const each = 2812500n / n;
@@ -111,7 +116,7 @@ export function payout(reserve, gateways, poster) {
     released = eachRelease * n;
     nextReserve -= released;
     for (const a of active) credits[a] = (each + eachRelease).toString();
-    credits[poster] = (BigInt(credits[poster] ?? '0') + 312500n).toString();
+    credits[poster] = (BigInt(credits[poster] ?? '0') + POSTER_SHARE).toString();
   }
   return { game: game.toString(), reserve: nextReserve.toString(), released: released.toString(), credits };
 }

@@ -8,7 +8,7 @@ import { HeaderSource } from './header-source.js';
 export class Gateway extends Feature {
   constructor(peer, options = {}) {
     super(peer, options);
-    this.options = { host: '127.0.0.1', port: 49223, headerSource: 'off', pollMs: 1000,
+    this.options = { host: '127.0.0.1', port: 49223, headerSource: 'off', pollMs: 1000, headerDelayMs: 60000,
       ipLimit: 240, addressLimit: 60, rateWindowMs: 60000, maxQueue: 64, ...options };
     this.queue = Promise.resolve(); this.queued = 0; this.limits = new Map(); this.server = null;
     this.source = this.options.headerSource === 'off' ? null : new HeaderSource(this.options.headerSource, options);
@@ -162,9 +162,15 @@ export class Gateway extends Feature {
     if (own?.registered && !own.active) await this.ownMove('gw_beat', {});
     if (this.source) {
       const headers = await this.source.next(state, h => this.api.coinHashAt(h));
-      if (headers.length) {
-        const result = await this.ownMove('header', { hx: headers });
-        if (!result.ok) throw new Error(result.error);
+      if (!headers.length) this.headersWaiting = null;
+      else {
+        // Agents get the first chance to post a new block; the gateway posts only after headerDelayMs.
+        this.headersWaiting ??= Date.now();
+        if (Date.now() - this.headersWaiting >= this.options.headerDelayMs) {
+          const result = await this.ownMove('header', { hx: headers });
+          if (!result.ok) throw new Error(result.error);
+          this.headersWaiting = null;
+        }
       }
     }
   }

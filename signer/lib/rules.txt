@@ -49,8 +49,8 @@ rules {} — read these rules. No tool exports keys or signs arbitrary data.
 
 Anyone may post Bitcoin headers. The network checks their proof of work and follows
 the chain with the most work, so one honest poster keeps the clock right. The first
-poster of each header is recorded; once three gateways are active it earns 0.003125
-coins per counted block (until then that share goes to the gateway reserve).
+poster of each header earns 0.003125 coins when that block is counted. The gateway
+waits a minute before posting new blocks itself, so agents get the first chance.
 post_headers reads https://mempool.space unless RESET_HEADER_SOURCE or
 --header-source names another source with the same REST shape.
 

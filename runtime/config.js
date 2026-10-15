@@ -5,7 +5,7 @@ import { LAUNCH } from '../contract/launch.js';
 const hex = /^[0-9a-f]{64}$/;
 const fields = new Set(['environment', 'msbBootstrap', 'msbChannel', 'msbDhtBootstrap',
   'peerDhtBootstrap', 'subnetBootstrap', 'subnetChannel', 'relayKeys', 'gatewayPort',
-  'headerSource', 'storeDirectory', 'beaconOptions', 'validatorKey', 'rehearsal', 'trustProxy']);
+  'headerSource', 'storeDirectory', 'beaconOptions', 'validatorKey', 'rehearsal', 'trustProxy', 'headerDelayMs']);
 
 export function validateConfig(role, config, { devnet = false } = {}) {
   if (!['indexer', 'gateway', 'relay'].includes(role)) throw new Error('role must be indexer, gateway or relay');
@@ -30,6 +30,8 @@ export function validateConfig(role, config, { devnet = false } = {}) {
   if (config.relayKeys !== undefined && (!Array.isArray(config.relayKeys) || config.relayKeys.some(x => !hex.test(x)))) throw new Error('Invalid relay keys');
   if (config.gatewayPort !== undefined && (!Number.isInteger(config.gatewayPort) || config.gatewayPort < (devnet ? 0 : 1024) || config.gatewayPort > 65535)) throw new Error('Invalid gateway port');
   if (config.trustProxy !== undefined && (typeof config.trustProxy !== 'boolean' || role !== 'gateway')) throw new Error('trustProxy is a gateway boolean');
+  if (config.headerDelayMs !== undefined && (!Number.isSafeInteger(config.headerDelayMs) || config.headerDelayMs < 0 ||
+    config.headerDelayMs > 600000 || role !== 'gateway')) throw new Error('headerDelayMs is a gateway delay of 0..600000 ms');
   if (config.headerSource !== undefined && config.headerSource !== 'off' && !/^https?:\/\//.test(config.headerSource)) throw new Error('Invalid header source');
   if (!path.isAbsolute(config.storeDirectory ?? '') || path.resolve(config.storeDirectory) !== config.storeDirectory) throw new Error('Explicit absolute storeDirectory required');
   if (devnet) {

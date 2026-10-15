@@ -45,7 +45,7 @@ for (const n of [0,1,2,3,7]) test(`payout conservation and remainders with ${n} 
   const p = r.payout(reserve, gateways, addr(9));
   const credited = Object.values(p.credits).reduce((s,n)=>s+BigInt(n),0n);
   assert.equal(BigInt(p.game)+BigInt(p.reserve)+credited, reserve+r.ISSUANCE);
-  if(n<3){assert.equal(p.game,'309375000');assert.equal(p.reserve,(reserve+r.GATEWAY_SHARE).toString());assert.deepEqual(p.credits,{});}
+  if(n<3){assert.equal(p.game,'309375000');assert.equal(p.reserve,(reserve+r.GATEWAY_SHARE-r.POSTER_SHARE).toString());assert.deepEqual(p.credits,{[addr(9)]:'312500'});}
   else {assert.equal(p.credits[addr(9)],'312500');assert.equal(BigInt(p.released),r.GATEWAY_SHARE-r.GATEWAY_SHARE%BigInt(n));}
   const final=r.payout(2n,gateways,addr(1));
   assert.equal(BigInt(final.game)+BigInt(final.reserve)+Object.values(final.credits).reduce((s,n)=>s+BigInt(n),0n),2n+r.ISSUANCE);

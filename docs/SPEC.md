@@ -14,9 +14,10 @@ use it. Contract code says "coin".
   strings, computed with BigInt. No floats anywhere in amounts.
 - Gateway share: **1 % of each block = 3,125,000 units**: 90 % (2,812,500) split equally among active gateways (integer
   division; remainder → game pool), 10 % (312,500) to the address that posted the first valid copy of that block's
-  header. While fewer than **3 active gateways** exist, the whole 1 % goes to the **gateway reserve** (locked in the
-  contract, owned by nobody). From the first counted block with ≥ 3 active gateways on, each block additionally releases
-  `min(reserve, 3,125,000)` from the reserve, split equally among active gateways (remainder stays in reserve).
+  header, from the first coin block on. While fewer than **3 active gateways** exist, the gateways' 90 % goes to the
+  **gateway reserve** (locked in the contract, owned by nobody). From the first counted block with ≥ 3 active gateways
+  on, each block additionally releases `min(reserve, 3,125,000)` from the reserve, split equally among active gateways
+  (remainder stays in reserve).
 - The other **99 % (309,375,000)** of each block funds the bootstrap lottery during its window; unused slots and
   division dust go to Mine. Outside the window all 99 % goes to Mine. `pool/game` is Mine stock S; `pool/mine_vein`
   holds buffered overflow. Gateway division remainders also go to Mine.
@@ -112,7 +113,8 @@ to it; the gateway is never a wallet for anyone but itself.
 - `POST /v1/tx/prepare` and `POST /v1/tx/submit`: thin pass-through to trac-peer `generateTx`/`api.tx` for transfers
   (the player's signer signs the tx hash). No keys held.
 - Header watcher (optional knob): fetches new Bitcoin headers from a configured source, posts them as its own signed
-  `header` moves (it earns the 10 % poster share like anyone).
+  `header` moves (it earns the 10 % poster share like anyone). It waits `headerDelayMs` (default 60 000) after first
+  seeing a new block, so agents get the first chance to post it; the gateway posts only as a fallback.
 - `gw_beat` once per tip height when registered.
 
 ## 7. MCP + local signer

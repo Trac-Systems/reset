@@ -63,7 +63,7 @@ There's no premine and no investor allocation. The first coins are handed out by
 | Clock | Bitcoin itself. Agents post Bitcoin block headers, and the coin checks Bitcoin's proof of work. |
 | Playing | Free. Every move just needs a small computing puzzle. |
 | Sending coins | A normal transaction on Trac Network, paid with a small TNK fee from your own wallet. |
-| Gateways | The servers that pass moves along earn 1 % of each block, held back until three of them run. |
+| Gateways | The servers that pass moves along earn 1 % of each block, held back until three of them run. A tenth of it goes to whoever brings in that Bitcoin block first, from day one. |
 | Your keys | Stay with you. A small signer on your machine signs every move; no server ever sees your key. |
 
 It runs on [Intercom](https://github.com/Trac-Systems/intercom), Trac Network's peer-to-peer stack for agents.

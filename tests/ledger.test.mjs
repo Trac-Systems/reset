@@ -22,12 +22,12 @@ test('issuance starts after checkpoint, reserve locked with one/two gateways, ac
   const l=ledger();
   for(let i=1;i<=2;i++){assert.equal(await l.tx('gw_set',{addr:addr(i),on:true}),null);assert.equal(await l.move('gw_beat',{},addr(i)),null);}
   assert.equal(await l.post(0,5),null);assert.equal(l.data.get('supply/issued'),undefined);
-  assert.equal(await l.post(5,6),null);assert.equal(l.data.get('supply/issued'),'312500000');assert.equal(l.data.get('pool/game'),'309375000');assert.equal(l.data.get('pool/gwreserve'),'3125000');
+  assert.equal(await l.post(5,6),null);assert.equal(l.data.get('supply/issued'),'312500000');assert.equal(l.data.get('pool/game'),'309375000');assert.equal(l.data.get('pool/gwreserve'),'2812500');assert.equal(l.data.get(`bal/${addr(1)}`),'312500','poster earns before three gateways');
   assert.equal(await l.tx('gw_set',{addr:addr(3),on:true}),null);
   for(let i=1;i<=3;i++)assert.equal(await l.move('gw_beat',{},addr(i)),null);
   assert.equal(await l.post(6,7,addr(9)),null);
-  assert.equal(l.data.get('pool/gwreserve'),'2');assert.equal(l.data.get(`bal/${addr(1)}`),'2291666');
-  assert.equal(l.data.get(`bal/${addr(2)}`),'1979166');assert.equal(l.data.get(`cnt/2`).poster,addr(1));
+  assert.equal(l.data.get('pool/gwreserve'),'0');assert.equal(l.data.get(`bal/${addr(1)}`),'2500000');
+  assert.equal(l.data.get(`bal/${addr(2)}`),'1875000');assert.equal(l.data.get(`cnt/2`).poster,addr(1));
   assert.equal(l.data.get(`bal/${addr(9)}`),undefined,'poster of newly counted original header earns share');
   const supply=l.data.get('supply/issued');assert.equal(await l.move('header',{hx:[l.headers[6]]}),'header_known');assert.equal(l.data.get('supply/issued'),supply);
 });

@@ -132,6 +132,7 @@ Any other MCP client (Cursor, Claude Desktop, Windsurf and others use this forma
 Use the reset tools. Read the rules with `rules`, then check `status` and show me my `address`.
 - If the lottery has not started yet, tell me when it starts and wait for it.
 - While the lottery is open, place one guess with `lottery_guess` for every block you can.
+- About every ten minutes, run `post_headers` to bring the newest Bitcoin blocks to the network.
 - If you have coins, lock some with `lock` and play the Mine every round with `mine_claim`.
   Decide for yourself how much to claim each round; the rules explain what happens.
 - If the lottery is over and you have no coins, tell me your address so I can send you some,
@@ -139,8 +140,11 @@ Use the reset tools. Read the rules with `rules`, then check `status` and show m
 Keep playing, and report what you earn and anything unusual, like a vein being found.
 ```
 
-Your agent gets these tools: `status`, `address`, `rules`, `lottery_guess`, `mine_claim`, `lock`, `unlock`,
-`withdraw` and `transfer`. Playing is free. Sending coins with `transfer` costs a small TNK fee from your own
+Your agent gets these tools: `status`, `address`, `rules`, `post_headers`, `lottery_guess`, `mine_claim`, `lock`,
+`unlock`, `withdraw` and `transfer`. With `post_headers` your agent fetches new Bitcoin blocks from a public Bitcoin
+source on your machine (mempool.space unless `RESET_HEADER_SOURCE` names another) and brings them in. The coin checks
+Bitcoin's proof of work and follows the chain with the most work, so one honest agent is enough to keep the clock
+right, whatever any single server does. Playing is free. Sending coins with `transfer` costs a small TNK fee from your own
 wallet, so send some TNK to the address shown by `address` first.
 
 Agents that want the full details can read [`docs/llms.txt`](docs/llms.txt).

@@ -7,15 +7,18 @@ import { publicAddress, signAndSolve, signTransfer } from './index.mjs';
 import { check, validateTransfer } from './wire.mjs';
 import { stableStringify } from './pow.mjs';
 import { localBackend, rejection } from './local-backend.mjs';
+import { DEFAULT_HEADER_SOURCE, headerSource, newHeaders } from './headers.mjs';
 import { coinInput, units, coins, validateState, validateAccount, statusView } from './local-state.mjs';
 
 const penalty = 'Above 1000, requested excess adds a strike and costs excess times your strike count, taken from deposit then exiting coins. The first strike cannot improve net earnings; repeated overclaims lose.';
 
 export async function createLocalMcp({ wallet, gatewayUrl, mcpUrl, context, maxAttempts = 10000000, maxWorkMs = 90000,
+  headerSourceUrl = DEFAULT_HEADER_SOURCE,
   log = text => process.stderr.write(text + '\n') }) {
   check(Number.isSafeInteger(maxAttempts) && maxAttempts > 0, 'Invalid attempt limit');
   check(Number.isSafeInteger(maxWorkMs) && maxWorkMs > 0 && maxWorkMs <= 110000, 'Work time limit must be 1..110000 milliseconds');
   const backend = localBackend({ wallet, gatewayUrl, mcpUrl }), addr = publicAddress(wallet), tnkAddress = wallet.address;
+  const bitcoin = headerSource(headerSourceUrl);
   const rules = await readFile(new URL('./rules.txt', import.meta.url), 'utf8');
   const server = new McpServer({ name: 'reset-signer', version: '0.1.0' }, { capabilities: { logging: {} } });
   const shutdown = new AbortController();
@@ -115,6 +118,23 @@ export async function createLocalMcp({ wallet, gatewayUrl, mcpUrl, context, maxA
     if (result.ok) guessed.add(result.target);
     return result;
   }, false);
+  register('post_headers', 'Bring the newest Bitcoin block headers to the network, fetched from a public Bitcoin source on this machine. Anyone may post headers; the network checks their proof of work and follows the chain with the most work, so one honest poster keeps the clock right. Free of TNK fees and puzzles.', {},
+    async (_, extra) => {
+      const state = validateState(await backend.state());
+      const found = await newHeaders(bitcoin, state);
+      if (!found.headers.length) return { ok: true, outcome: 'nothing_new', tip: state.tip.height, source_height: found.remote,
+        source: bitcoin.origin, message: found.remote < state.tip.height ? 'Your Bitcoin source is behind the network. Nothing to post.'
+          : 'The network already has every header your Bitcoin source knows.' };
+      const payload = { hx: found.headers };
+      const packet = await backend.prepareMove('header', payload, state);
+      check(packet?.envelope?.t === 'header' && stableStringify(packet.envelope.p) === stableStringify(payload), 'Gateway changed the requested move.');
+      const signal = AbortSignal.any([extra.signal, shutdown.signal, AbortSignal.timeout(maxWorkMs)]);
+      const signed = await signAndSolve(wallet, packet, { state, maxAttempts, signal,
+        refreshState: async () => validateState(await backend.state()) });
+      signal.throwIfAborted();
+      return submit(() => backend.submitMove(signed), { headers: found.headers.length, from_height: found.start,
+        to_height: found.start + found.headers.length - 1, source_height: found.remote, source: bitcoin.origin });
+    }, false);
   register('mine_claim', `Claim from Mine. Default level 1000 requests exactly your fair share. Levels 0..2000; above 1000 requires allow_over: true. ${penalty}`, {
     level: z.number().int().min(0).max(2000).optional(), allow_over: z.boolean().optional()
   }, (args, extra) => {

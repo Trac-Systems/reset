@@ -50,12 +50,13 @@ async function main() {
   const { values, positionals } = parseArgs({ allowPositionals: true, options: {
     directory: { type: 'string' }, state: { type: 'string' }, context: { type: 'string' },
     audience: { type: 'string' }, 'max-attempts': { type: 'string' }, help: { type: 'boolean' },
-    gateway: { type: 'string' }, 'mcp-url': { type: 'string' }, 'max-work-ms': { type: 'string' }
+    gateway: { type: 'string' }, 'mcp-url': { type: 'string' }, 'max-work-ms': { type: 'string' },
+    'header-source': { type: 'string' }
   } });
   const [command, file] = positionals;
   if (values.help || !command) return { commands: ['init', 'import', 'address', 'sign_and_solve <move.json> --state <state.json>',
     'sign_transfer <prepared.json> --context <trusted-context.json>', 'sign_challenge <challenge.json> --audience <origin>', 'verify <signed.json>',
-    'mcp --gateway <trusted-origin> [--mcp-url <hosted-origin>] [--context <trusted-context.json>]'],
+    'mcp --gateway <trusted-origin> [--mcp-url <hosted-origin>] [--context <trusted-context.json>] [--header-source <bitcoin-api-origin>]'],
     password: 'RESET_SIGNER_PASSWORD or hidden prompt', mnemonic: 'RESET_SIGNER_MNEMONIC or hidden prompt for import' };
   if (positionals.length > 2) throw new Error('Unexpected arguments');
   if (!['init', 'import', 'address', 'sign_and_solve', 'sign_transfer', 'sign_challenge', 'verify', 'mcp'].includes(command)) throw new Error('Unknown command');
@@ -74,6 +75,7 @@ async function main() {
     try {
       service = await createLocalMcp({ wallet, context, gatewayUrl: gatewayDefault,
         mcpUrl: values['mcp-url'] ?? process.env.RESET_MCP_URL,
+        headerSourceUrl: values['header-source'] || process.env.RESET_HEADER_SOURCE || undefined,
         maxAttempts: Number(values['max-attempts'] ?? process.env.RESET_SIGNER_MAX_ATTEMPTS ?? 10000000),
         maxWorkMs: Number(values['max-work-ms'] ?? process.env.RESET_SIGNER_MAX_WORK_MS ?? 90000) });
       await service.run();

@@ -28,7 +28,7 @@ test('packed tarball runs through npx with an isolated cache and keystore', { ti
     const shown = await local.call('address');
     assert.equal(shown.address, initialized.address); assert.match(shown.tnk_address, /^trac1/);
     assert.match(await local.call('rules'), /fair share/);
-    assert.equal((await local.client.listTools()).tools.length, 9);
+    assert.equal((await local.client.listTools()).tools.length, 10);
     assert.ok(!JSON.stringify([local.logs, local.outputs]).includes(password));
   } finally { await local.close(); }
   assert.match((await run('dashboard', '--help')).usage, /^dashboard /);

@@ -3,7 +3,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { LoggingMessageNotificationSchema } from '@modelcontextprotocol/sdk/types.js';
 import { fileURLToPath } from 'node:url';
 
-export async function connectLocal({ directory, password, gatewayUrl, mcpUrl, contextFile, flags = [], command, args }) {
+export async function connectLocal({ directory, password, gatewayUrl, mcpUrl, contextFile, headerSource, flags = [], command, args }) {
   const logs = [], outputs = [], progress = [];
   const client = new Client({ name: 'reset-local-test', version: '1.0.0' });
   client.setNotificationHandler(LoggingMessageNotificationSchema, message => { logs.push(message.params.data); });
@@ -11,7 +11,7 @@ export async function connectLocal({ directory, password, gatewayUrl, mcpUrl, co
     command: command ?? process.execPath,
     args: args ?? [fileURLToPath(new URL('../bin/reset-signer.mjs', import.meta.url)), 'mcp', ...flags],
     env: { ...process.env, RESET_SIGNER_DIRECTORY: directory, RESET_SIGNER_PASSWORD: password,
-      RESET_GATEWAY_URL: gatewayUrl ?? '', RESET_MCP_URL: mcpUrl ?? '', RESET_SIGNER_CONTEXT: contextFile ?? '',
+      RESET_GATEWAY_URL: gatewayUrl ?? '', RESET_MCP_URL: mcpUrl ?? '', RESET_SIGNER_CONTEXT: contextFile ?? '', RESET_HEADER_SOURCE: headerSource ?? '',
       npm_config_userconfig: '/dev/null', npm_config_cache: fileURLToPath(new URL('../../.npm-cache/', import.meta.url)),
       npm_config_prefer_offline: 'true', npm_config_audit: 'false', npm_config_fund: 'false' }, stderr: 'pipe'
   });

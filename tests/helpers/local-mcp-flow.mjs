@@ -18,7 +18,7 @@ export async function localMcpFlow(network) {
   const c = await connectLocal({ directory: alice.keystore, password: TEST_PASSWORD, gatewayUrl: endpoint.gatewayUrl,
     contextFile: join(manifest.root, 'context-1.json'), flags: ['--max-attempts', '50000000'] });
   try {
-    assert.equal((await c.client.listTools()).tools.length, 9);
+    assert.equal((await c.client.listTools()).tools.length, 10);
     const shown = await c.call('address');
     assert.equal(shown.address, alice.address); assert.match(shown.tnk_address, /^trac1/);
     assert.match(await c.call('rules'), /free|no TNK/);

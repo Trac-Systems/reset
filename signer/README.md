@@ -62,8 +62,10 @@ checks cannot establish their honesty. `--directory` / `RESET_SIGNER_DIRECTORY`
 selects the keystore. Transfers require `--context` / `RESET_SIGNER_CONTEXT` as
 an independently trusted local JSON file with the pins described below.
 
-Tools: `status`, `address`, `lottery_guess`, `mine_claim`, `lock`, `unlock`,
-`withdraw`, `transfer`, `rules`. All tool amounts are **coin strings**, e.g.
+Tools: `status`, `address`, `post_headers`, `lottery_guess`, `mine_claim`, `lock`, `unlock`,
+`withdraw`, `transfer`, `rules`. `post_headers` reads new Bitcoin headers from
+`--header-source` / `RESET_HEADER_SOURCE` (default https://mempool.space), checks
+that they hash and link correctly, and posts them as a `header` move. All tool amounts are **coin strings**, e.g.
 `{"amount":"0.00000010"}` is ten integer units. Outputs use eight decimals.
 `mine_claim {}` requests exactly the eventual fair share (level 1000); above
 1000 requires `allow_over:true` and displays the penalty. A transfer displays

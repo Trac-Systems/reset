@@ -23,6 +23,10 @@ const reasons = {
   exit_wait: 'No exits are mature yet. Wait until their release height is counted.',
   busy: 'The gateway is busy. Wait before trying again.', msb_root_changed: 'The settlement state changed. Prepare the transfer again.',
   writer: 'The gateway is not an active writer.', chat_disabled: 'Mining messages are disabled.',
+  header_known: 'The network already has these headers.',
+  header_parent: 'These headers do not connect to the network\'s Bitcoin chain.', header_link: 'These headers are not consecutive.',
+  header_final: 'These headers would fork behind a final block.', header_pow: 'These headers fail the proof-of-work check.',
+  header_bits: 'These headers carry the wrong difficulty.', header_time: 'These headers carry an invalid time.',
   signature: 'The gateway rejected the signature.', muted: 'This address cannot submit moves.', whitelist: 'This address is not admitted.'
 };
 export function rejection(code) {

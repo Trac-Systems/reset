@@ -137,6 +137,7 @@ MCP remains keyless and keeps the low-level §7a interface.
 |---|---|---|
 | `status` | `{}` | Tip/counting, lottery and Mine windows, own balance/deposit/exits/strikes, fair-share estimate, difficulty and remaining capacity |
 | `address` | `{}` | Own public hex address |
+| `post_headers` | `{}` | Fetch up to 20 headers after the network tip from a Bitcoin REST source (`--header-source`, default mempool.space), check hashes and links, post one `header` move; if the source disagrees with the tip, start after the counted height |
 | `lottery_guess` | `{target?,guess?}` | Default next eligible target, skipping full targets and this process's accepted guesses; random eight-lowercase-hex guess |
 | `mine_claim` | `{level?,allow_over?}` | Default 1000, exactly the eventual fair share; integer 0..2000; levels above 1000 require `allow_over:true` and show the excess-times-strikes penalty |
 | `lock`, `unlock` | `{amount}` | Move spendable coins into deposit, or start exiting deposit |

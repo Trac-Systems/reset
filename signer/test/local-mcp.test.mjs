@@ -9,6 +9,23 @@ import { units, coins } from '../lib/local-state.mjs';
 import { transactionHash } from '../lib/wire.mjs';
 import { context } from './helpers.mjs';
 import { createMcpService } from '../../mcp/lib/server.mjs';
+import { createServer } from 'node:http';
+import { chain, parseHeader } from '../../tests/helpers/chain.mjs';
+
+// A Bitcoin source with the mempool.space REST shape, serving `headers` as heights 1..n.
+async function bitcoinSource(t, headers, alter = {}) {
+  const byHash = new Map(headers.map(hx => [parseHeader(hx).hash, hx]));
+  const http = createServer((req, res) => {
+    let m, body = null;
+    if (req.url === '/api/blocks/tip/height') body = String(headers.length);
+    else if ((m = /^\/api\/block-height\/(\d+)$/.exec(req.url)) && headers[m[1] - 1]) body = parseHeader(headers[m[1] - 1]).hash;
+    else if ((m = /^\/api\/block\/([0-9a-f]{64})\/header$/.exec(req.url)) && byHash.has(m[1])) body = alter.header?.(byHash.get(m[1])) ?? byHash.get(m[1]);
+    res.writeHead(body === null ? 404 : 200); res.end(body ?? 'not found');
+  });
+  await new Promise(resolve => http.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => { http.closeAllConnections(); http.close(resolve); }));
+  return `http://127.0.0.1:${http.address().port}`;
+}
 
 test('coin amounts use exact eight-decimal integer arithmetic', () => {
   for (const [input, value] of [['0.00000001', '1'], ['3.125', '312500000'], ['9007199254740993.12345678', '900719925474099312345678']]) {
@@ -20,7 +37,7 @@ test('coin amounts use exact eight-decimal integer arithmetic', () => {
 test('stdio tools play through the contract, preserve secrets, report work and show transfer review', async t => {
   const f = await localFixture(t), c = await f.connect();
   const names = (await c.client.listTools()).tools.map(t => t.name).sort();
-  assert.deepEqual(names, ['address', 'lock', 'lottery_guess', 'mine_claim', 'rules', 'status', 'transfer', 'unlock', 'withdraw']);
+  assert.deepEqual(names, ['address', 'lock', 'lottery_guess', 'mine_claim', 'post_headers', 'rules', 'status', 'transfer', 'unlock', 'withdraw']);
   const shown = await c.call('address');
   assert.equal(shown.address, f.address);
   assert.match(shown.tnk_address, /^trac1[02-9ac-hj-np-z]{58}$/);
@@ -43,6 +60,32 @@ test('stdio tools play through the contract, preserve secrets, report work and s
   assert.equal(JSON.stringify([c.outputs, c.logs, f.control.requests]).includes(password), false);
   assert.equal(JSON.stringify(c.outputs).includes('signature'), false);
   f.ledger.check();
+});
+
+test('post_headers brings new Bitcoin headers in batches, then reports nothing new', async t => {
+  const f = await localFixture(t);
+  const c = await f.connect({ headerSource: await bitcoinSource(t, f.ledger.headers.slice(0, 40)) });
+  const tip = (await c.call('status')).tip;
+  const first = await c.call('post_headers');
+  assert.equal(first.ok, true); assert.equal(first.from_height, tip + 1); assert.equal(first.headers, 20); assert.equal(first.source_height, 40);
+  assert.equal((await c.call('status')).tip, tip + 20);
+  const second = await c.call('post_headers');
+  assert.equal(second.to_height, 40);
+  const none = await c.call('post_headers');
+  assert.equal(none.outcome, 'nothing_new'); assert.equal((await c.call('status')).tip, 40);
+  f.ledger.check();
+});
+
+test('post_headers refuses a source whose headers do not match and reports a foreign chain as rejected', async t => {
+  const f = await localFixture(t);
+  const forged = await f.connect({ headerSource: await bitcoinSource(t, f.ledger.headers.slice(0, 40), { header: hx => hx.slice(0, 150) + 'ffffffffff' }) });
+  await assert.rejects(forged.call('post_headers'), /do not fit together/);
+  assert.equal(f.control.submissions.length, 0);
+  const foreign = await f.connect({ headerSource: await bitcoinSource(t, chain(40, undefined, 600, 7)) });
+  const result = JSON.parse((await foreign.result('post_headers')).content[0].text);
+  assert.equal(result.outcome, 'rejected'); assert.match(result.message, /do not connect/);
+  const down = await f.connect({ headerSource: 'http://127.0.0.1:9' });
+  await assert.rejects(down.call('post_headers'), /unavailable/);
 });
 
 test('stdio refuses overclaims unless explicit and rejects unsafe schemas and unknown signing tools', async t => {

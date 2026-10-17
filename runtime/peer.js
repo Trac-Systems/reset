@@ -11,6 +11,8 @@ import CoinProtocol from '../contract/protocol.js';
 import CoinContract from '../contract/contract.js';
 import Gateway from '../features/gateway/index.js';
 import BlindRelay from '../features/blind-relay/index.js';
+import Sidechannel from '../features/sidechannel/index.js';
+import { MineChat, CHAT_CHANNEL } from '../features/chat/index.js';
 import { relayConfigFromFlags } from '../features/blind-relay/config.js';
 import { validateConfig, validateFlags } from './config.js';
 import { LAUNCH } from '../contract/launch.js';
@@ -39,14 +41,14 @@ export async function runConfiguredPeer(flags) {
   const relayConfig = relayConfigFromFlags({ ...flags,
     'blind-relay': flags['blind-relay'] ?? config.relayKeys?.join(',') });
   const gateways = flags['gateways-file'] ? JSON.parse(fs.readFileSync(flags['gateways-file'], 'utf8')) : [];
-  let bus, peer, gateway, relay, control, closing;
+  let bus, peer, gateway, relay, control, closing, sidechannel;
   let finish;
   const lifetime = new Promise(resolve => { finish = resolve; });
   const close = () => closing ??= (async () => {
     control?.stop();
     // Close every resource even if a preceding close failed.
     let failure;
-    for (const stop of [() => gateway?.stop(), () => relay?.stop(), () => peer?.close(),
+    for (const stop of [() => gateway?.stop(), () => sidechannel?.stop(), () => relay?.stop(), () => peer?.close(),
       () => peer?.store.close(), () => bus?.close()]) {
       try { await stop(); } catch (error) { failure ??= error; }
     }
@@ -92,8 +94,19 @@ export async function runConfiguredPeer(flags) {
       relay = new BlindRelay(peer, relayConfig); await relay.start(); peer.blindRelay = relay;
       console.log('[blind-relay]', JSON.stringify(relay.stats()));
     }
+    let chat = null;
+    if (role === 'gateway' && config.chat) {
+      // Miners' chat: an open p2p sidechannel; the gateway also serves it over HTTP (features/chat).
+      const viewerKeys = config.chat.viewerKeyFile ? [fs.readFileSync(config.chat.viewerKeyFile, 'utf8').trim()] : [];
+      chat = new MineChat(peer, { viewerKeys });
+      sidechannel = new Sidechannel(peer, { channels: [CHAT_CHANNEL], openChannels: [CHAT_CHANNEL], powEnabled: false,
+        onMessage: (channel, payload) => { if (channel === CHAT_CHANNEL) void chat.receive(payload); } });
+      chat.sidechannel = sidechannel;
+      peer.sidechannel = sidechannel;
+      await sidechannel.start();
+    }
     if (role === 'gateway') {
-      gateway = new Gateway(peer, { port: config.gatewayPort ?? 49223, headerSource: config.headerSource ?? 'off', trustProxy: config.trustProxy === true,
+      gateway = new Gateway(peer, { chat, port: config.gatewayPort ?? 49223, headerSource: config.headerSource ?? 'off', trustProxy: config.trustProxy === true,
         ...(config.headerDelayMs !== undefined ? { headerDelayMs: config.headerDelayMs } : {}),
         ...(devnet ? { pollMs: 100, ipLimit: 10000, addressLimit: 10000 } : {}) });
       await peer.protocol.instance.addFeature('gateway', gateway); await gateway.start();

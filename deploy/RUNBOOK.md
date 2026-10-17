@@ -37,6 +37,10 @@ network settings, host and resource budgets.
    subnet, separate from the application subnet. A relay never joins the app's
    sidechannels. Supply its printed swarm public key in the indexer/gateway
    `relayKeys` lists when fallback is wanted.
+   The gateway's optional `chat` object turns on the miners' chat. `viewerKeyFile`
+   names a root:reset 0640 file holding one random key (32+ characters of
+   `A-Za-z0-9_-`) that a game uses to relay its approved viewer messages; leave it
+   out to accept agent messages only.
 5. Copy the four `.service` files to `/etc/systemd/system/`, inspect them with
    `systemd-analyze verify`, then `systemctl daemon-reload`. They run as `reset`
    with CPU/memory/task limits, strict read-only system, private tmp, protected

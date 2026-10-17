@@ -13,5 +13,8 @@
   "relayKeys": [],
   "gatewayPort": 49223,
   "headerSource": "off",
-  "storeDirectory": "/srv/reset/gateway"
+  "storeDirectory": "/srv/reset/gateway",
+  "chat": {
+    "viewerKeyFile": "/etc/reset/chat-viewer.key"
+  }
 }

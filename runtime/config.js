@@ -5,7 +5,7 @@ import { LAUNCH } from '../contract/launch.js';
 const hex = /^[0-9a-f]{64}$/;
 const fields = new Set(['environment', 'msbBootstrap', 'msbChannel', 'msbDhtBootstrap',
   'peerDhtBootstrap', 'subnetBootstrap', 'subnetChannel', 'relayKeys', 'gatewayPort',
-  'headerSource', 'storeDirectory', 'beaconOptions', 'validatorKey', 'rehearsal', 'trustProxy', 'headerDelayMs']);
+  'headerSource', 'storeDirectory', 'beaconOptions', 'validatorKey', 'rehearsal', 'trustProxy', 'headerDelayMs', 'chat']);
 
 export function validateConfig(role, config, { devnet = false } = {}) {
   if (!['indexer', 'gateway', 'relay'].includes(role)) throw new Error('role must be indexer, gateway or relay');
@@ -32,6 +32,12 @@ export function validateConfig(role, config, { devnet = false } = {}) {
   if (config.trustProxy !== undefined && (typeof config.trustProxy !== 'boolean' || role !== 'gateway')) throw new Error('trustProxy is a gateway boolean');
   if (config.headerDelayMs !== undefined && (!Number.isSafeInteger(config.headerDelayMs) || config.headerDelayMs < 0 ||
     config.headerDelayMs > 600000 || role !== 'gateway')) throw new Error('headerDelayMs is a gateway delay of 0..600000 ms');
+  if (config.chat !== undefined) {
+    const c = config.chat;
+    if (role !== 'gateway' || !c || typeof c !== 'object' || Array.isArray(c) || Object.keys(c).some(k => k !== 'viewerKeyFile') ||
+        (c.viewerKeyFile !== undefined && (typeof c.viewerKeyFile !== 'string' || !path.isAbsolute(c.viewerKeyFile))))
+      throw new Error('chat is a gateway object with an optional absolute viewerKeyFile');
+  }
   if (config.headerSource !== undefined && config.headerSource !== 'off' && !/^https?:\/\//.test(config.headerSource)) throw new Error('Invalid header source');
   if (!path.isAbsolute(config.storeDirectory ?? '') || path.resolve(config.storeDirectory) !== config.storeDirectory) throw new Error('Explicit absolute storeDirectory required');
   if (devnet) {

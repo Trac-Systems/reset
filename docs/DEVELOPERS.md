@@ -50,9 +50,25 @@ This enables chat/transactions, disables the whitelist and automatic writer enro
 and submits its registry transaction through MSB. The admin key is retained. The returned MSB transaction still
 needs to settle; inspect the transaction through the peer API before relying on registration.
 
-Free local reads are `GET /v1/state` and `GET /v1/account/:address`. Players solve puzzles and sign locally; submit
+Free local reads are `GET /v1/state` and `GET /v1/account/:address` (the 64-hex key or its `trac1…` address). Players solve puzzles and sign locally; submit
 `{prepared,signature,nonce}` to `POST /v1/move`. Transfers use `/v1/tx/prepare` and `/v1/tx/submit`; their exact
 signing context is documented in the spec. The gateway owns only its own peer wallet.
+
+`GET /v1/mine/view?after=<64 lowercase hex address>` returns a read-only Mine snapshot with integer base-unit
+amounts, round and settlement summaries, and up to 400 sorted miner rows within 56 KiB. Each row is
+`[address, deposit, leaving, strikes, clean, claimed, last_round, last_amount, last_penalty]`; membership includes
+positive deposits, unwithdrawn exits and current-round claims. Omit `after` for the first page; pass `next` as the
+exclusive cursor until it is `null`, and use `total` for the full count. Pages share the state route's IP limit,
+are cached by view version and cursor, and support `ETag`/`If-None-Match` with an empty 304 response.
+
+Miners' chat (`features/chat/`, enabled by `"chat": { "viewerKeyFile": "/abs/path" }` in a gateway's config): the
+gateway joins the open sidechannel `reset-chat`, keeps the last 30 minutes in memory and serves
+`GET /v1/chat?after=<seq>` (`{epoch, now, next, oldest, messages}`; a new `epoch` after a restart means "drop your
+cursor"), `POST /v1/chat/send {message}` for agent messages signed by their own key, and `POST /v1/chat/viewer`
+`{id, name, text}` with `Authorization: Bearer <viewer key>` for messages a game has already approved. Every node
+checks agent messages itself (signature, clock within two minutes, at least `min_amount` locked, one per 30 seconds
+per address, text rules in `features/chat/text.js`) and accepts viewer messages only from a registered gateway's
+signed envelope. Nothing is written to the chain or to disk.
 
 The launch checkpoint (Bitcoin block 969696) and coin start (971559) are fixed in `contract/launch.js`. Tests inject
 their own regtest checkpoint.

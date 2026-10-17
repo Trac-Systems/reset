@@ -1,9 +1,12 @@
 import http from 'http';
+import { URLSearchParams } from 'url';
 import { Feature } from 'trac-peer';
 import { createHash } from 'trac-peer/src/utils/types.js';
 import { StateTransition } from '../../contract/state.js';
 import { ADDRESS, exactKeys, parseAmount, stableJSON, validatePrepared } from '../../contract/rules/index.js';
 import { HeaderSource } from './header-source.js';
+import { MineView } from './mine-view.js';
+import { tracToHex } from './trac-address.js';
 
 export class Gateway extends Feature {
   constructor(peer, options = {}) {
@@ -13,6 +16,7 @@ export class Gateway extends Feature {
     this.queue = Promise.resolve(); this.queued = 0; this.limits = new Map(); this.server = null;
     this.source = this.options.headerSource === 'off' ? null : new HeaderSource(this.options.headerSource, options);
     this.closed = false; this.tickPromise = null; this.timer = null;
+    this.mineView = new MineView(peer);
   }
   get api() { return this.peer.protocol.instance.api; }
   async withView(fn) {
@@ -111,7 +115,21 @@ export class Gateway extends Feature {
         // Bitcoin's own height as last seen by this gateway's header source (null when the watcher is off).
         return send(200, { ...state, source_height: this.source?.lastHeight ?? null, header_error: this.lastError ?? null });
       }
-      if (req.method === 'GET' && /^\/v1\/account\/[0-9a-f]{64}$/.test(path)) return send(200, await this.api.coinAccount(path.split('/').pop()));
+      if (req.method === 'GET' && path === '/v1/mine/view') {
+        const cursors = new URLSearchParams((req.url || '').split('?').slice(1).join('?')).getAll('after');
+        if (cursors.length > 1 || (cursors.length && !ADDRESS.test(cursors[0]))) return send(400, { ok: false, error: 'after' });
+        const { etag, body } = await this.mineView.get(cursors[0] ?? '');
+        const unchanged = String(req.headers['if-none-match'] ?? '').split(',').some(tag => tag.trim() === '*' || tag.trim().replace(/^W\//, '') === etag);
+        res.writeHead(unchanged ? 304 : 200, { 'content-type': 'application/json', 'cache-control': 'no-cache', etag });
+        return res.end(unchanged ? undefined : body);
+      }
+      if (req.method === 'GET' && path.startsWith('/v1/account/')) {
+        // The 64-hex key or its trac address (trac1…): both name the same account.
+        const id = path.slice('/v1/account/'.length), key = /^[0-9a-f]{64}$/.test(id) ? id : tracToHex(id);
+        if (!key) return send(400, { ok: false, error: 'address' });
+        return send(200, await this.api.coinAccount(key));
+      }
+      if (path === '/v1/chat' || path.startsWith('/v1/chat/')) return this.handleChat(req, path, send);
       if (req.method !== 'POST' || !['/v1/move', '/v1/tx/prepare', '/v1/tx/submit'].includes(path)) return send(404, { ok: false, error: 'not_found' });
       const body = await this.body(req);
       const address = body?.prepared?.dispatch?.address ?? body?.address;
@@ -120,6 +138,28 @@ export class Gateway extends Feature {
       const result = path === '/v1/move' ? await this.submit(body) : path === '/v1/tx/prepare' ? await this.prepareTransfer(body) : await this.submitTransfer(body);
       send(200, result);
     } catch (error) { send(error.message === 'body_too_large' ? 413 : 400, { ok: false, error: error.message }); }
+  }
+  // Miners' chat (features/chat): read, an agent's signed message, a viewer message relayed by the game.
+  async handleChat(req, path, send) {
+    const chat = this.options.chat;
+    if (!chat) return send(404, { ok: false, error: 'not_found' });
+    if (req.method === 'GET' && path === '/v1/chat') {
+      const after = new URLSearchParams((req.url || '').split('?').slice(1).join('?')).getAll('after');
+      if (after.length > 1 || (after.length && !/^(0|[1-9][0-9]{0,15})$/.test(after[0]))) return send(400, { ok: false, error: 'after' });
+      return send(200, await chat.list(after.length ? Number(after[0]) : null));
+    }
+    if (req.method === 'POST' && path === '/v1/chat/send') {
+      const body = await this.body(req);
+      const address = body?.message?.addr;
+      if (typeof address !== 'string' || !ADDRESS.test(address)) return send(400, { ok: false, error: 'address' });
+      if (!this.rate(`address/${address}`, this.options.addressLimit)) return send(429, { ok: false, error: 'address_rate' });
+      return send(200, await chat.postAgent(body));
+    }
+    if (req.method === 'POST' && path === '/v1/chat/viewer') {
+      if (!chat.viewerKeyOk(req.headers.authorization)) return send(401, { ok: false, error: 'unauthorized' });
+      return send(200, chat.postViewer(await this.body(req)));
+    }
+    return send(404, { ok: false, error: 'not_found' });
   }
   async start() {
     if (this.server) return;

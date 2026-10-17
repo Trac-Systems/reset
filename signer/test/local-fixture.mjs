@@ -7,6 +7,7 @@ import { prepareTransfer, verifyMove, verifySignature } from '../lib/wire.mjs';
 import { gameLedger } from '../../tests/helpers/games.mjs';
 import { chain } from '../../tests/helpers/chain.mjs';
 import { connectLocal } from './stdio-client.mjs';
+import { MineChat } from '../../features/chat/index.js';
 
 export async function localFixture(t) {
   const root = await temp(t), directory = join(root, 'wallet'), contextFile = join(root, 'context.json');
@@ -15,6 +16,9 @@ export async function localFixture(t) {
   const ledger = gameLedger({ deposits: [[address, 1000000000n]], headers: chain(100), params: { exit_wait: 1, min_amount: '1' } });
   await ledger.move('unlock', { amount: '1000000000' }, address);
   await ledger.advance(7); await ledger.move('withdraw', {}, address);
+  // The real chat hub of a gateway, reading this ledger.
+  const chat = new MineChat({ protocol: { instance: { api: {
+    coinState: () => ledger.view().state(), coinAccount: a => ledger.view().account(a) } } } }, { viewerKeys: ['v'.repeat(40)] });
   const control = { state: s => s, account: a => a, transfer: p => p, submit: undefined, response: undefined, requests: [], submissions: [] };
   const http = createServer(async (req, res) => {
     if (control.response) { control.response(req, res); return; }
@@ -24,7 +28,11 @@ export async function localFixture(t) {
     control.requests.push({ url: req.url, args });
     let output;
     try {
-      if (req.url === '/v1/state') output = control.state(await ledger.view().state());
+      if (req.url === '/v1/chat' || req.url.startsWith('/v1/chat?')) {
+        const after = new URL(req.url, 'http://x').searchParams.get('after');
+        output = await chat.list(after === null ? null : Number(after));
+      } else if (req.url === '/v1/chat/send') output = await chat.postAgent(args);
+      else if (req.url === '/v1/state') output = control.state(await ledger.view().state());
       else if (req.url.startsWith('/v1/account/')) output = control.account(await ledger.view().account(req.url.slice(12)));
       else if (req.url === '/v1/move') {
         control.submissions.push(args);
@@ -52,7 +60,7 @@ export async function localFixture(t) {
   await new Promise(resolve => http.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => { http.closeAllConnections(); http.close(resolve); }));
   const gatewayUrl = `http://127.0.0.1:${http.address().port}`;
-  return { address, directory, contextFile, ledger, control, gatewayUrl,
+  return { address, directory, contextFile, ledger, control, gatewayUrl, chat,
     async connect(options = {}) {
       const client = await connectLocal({ directory, password, gatewayUrl, contextFile, ...options });
       t.after(() => client.close()); return client;

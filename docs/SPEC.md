@@ -106,7 +106,7 @@ deposits + exiting + pools == supply/issued**.
 Runs inside a writer peer. Exposes a local HTTP JSON API (bind 127.0.0.1 by default, port knob). The MCP server talks
 to it; the gateway is never a wallet for anyone but itself.
 - `GET  /v1/state` → `{ tip: {height, hash}, counted, bits: {<t>: n}, capacity_left, per_address, params, gateways, lottery, mine }`
-- `GET  /v1/account/:addr` → `{ balance, deposit, exits, moves_this_height, mine }`
+- `GET  /v1/account/:addr` (64-hex key or `trac1…` address) → `{ balance, deposit, exits, moves_this_height, mine }`
 - `POST /v1/move` body `{ prepared, signature, nonce }` → pre-check with `contract/rules` against the current view
   (schema, `b`/`h`, puzzle, capacity, rate, balances, signature) → `api.post` → `{ ok, error? }`. Rejected moves are
   never written. Per-IP and per-address rate limits in memory.
@@ -116,6 +116,9 @@ to it; the gateway is never a wallet for anyone but itself.
   `header` moves (it earns the 10 % poster share like anyone). It waits `headerDelayMs` (default 60 000) after first
   seeing a new block, so agents get the first chance to post it; the gateway posts only as a fallback.
 - `gw_beat` once per tip height when registered.
+- Miners' chat (optional, `features/chat/`): see DEVELOPERS.md. Off-chain and in memory only; agent messages are
+  signed by the agent (`'reset-chat/v1\n' + stableJSON({v,kind,addr,text,ts,nonce})`), viewer messages enter through a
+  registered gateway with the game's relay key and travel in that gateway's signed sidechannel envelope.
 
 ## 7. MCP + local signer
 - Hosted MCP server (`mcp/`, Streamable HTTP, Node): tools `reset_state`, `reset_account`, `reset_prepare_move`,

@@ -44,9 +44,12 @@ export async function startPearDevnet({ intervalMs = 10000, cleanup = false,
     const relayKeys = [relay.info.swarmPublicKey];
     let admin = await launch('indexer', 'indexer', { relayKeys });
     const originalIdentity = admin.info;
+    // Every gateway runs the miners' chat; the game's relay key is the same throughout this test network.
+    const chatViewerKey = 'devnet-viewer-key-' + 'x'.repeat(32), viewerKeyFile = join(local.root, 'chat-viewer.key');
+    await writeFile(viewerKeyFile, chatViewerKey + '\n', { mode: 0o600 });
     const writers = [];
     for (let i = 1; i <= 3; i++) writers.push(await launch(`gateway-${i}`, 'gateway', {
-      subnetBootstrap: admin.info.subnetBootstrap, relayKeys, gatewayPort: 0 }));
+      subnetBootstrap: admin.info.subnetBootstrap, relayKeys, gatewayPort: 0, chat: { viewerKeyFile } }));
     for (const peer of [admin, ...writers]) await local.fund(validator, { address: peer.info.msbAddress });
     // Rehearse the exact stopped-service admin flags and reopen the same store.
     const gatewaysFile = join(local.root, 'gateways.json');
@@ -105,7 +108,7 @@ export async function startPearDevnet({ intervalMs = 10000, cleanup = false,
       players[name] = { address, msbAddress, keystore };
     }
     const manifest = { v: 1, localTestOnly: true, runtime: 'pear', root: local.root, intervalMs,
-      dhtBootstrap: local.dhtBootstrap, msbBootstrap: common.msbBootstrap, indexer: admin.info,
+      dhtBootstrap: local.dhtBootstrap, msbBootstrap: common.msbBootstrap, indexer: admin.info, chatViewerKey,
       relay: { ...relay.info, separateDiscoveryChannel: true }, gateways: endpoints, players };
     await writeFile(join(local.root, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', { mode: 0o600 });
     for (let i = 0; i < endpoints.length; i++) await writeFile(join(local.root, `context-${i + 1}.json`),

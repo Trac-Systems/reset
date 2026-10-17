@@ -1,7 +1,6 @@
 // Server-side HTML for the dashboard. Everything from the gateway is escaped; amounts are shown in coins only.
 import { units, int, esc, coins, blocksTime, ago, when, shortAddress } from './format.mjs';
 
-const RECENT_WIN_BLOCKS = 144;
 const CHART_POINTS = 360;
 
 const card = (id, title, body, extra = '') => `<section class="card" id="${id}" aria-labelledby="${id}-h"${extra}>
@@ -32,7 +31,7 @@ function coinsCard(state, account) {
   const exiting = exits.reduce((sum, e) => sum + units(e.amount), 0n);
   const total = balance + deposit + exiting;
   if (total === 0n) {
-    return card('coins', 'My coins', `<p class="hero num">0</p>${empty('No coins yet. Win some in the lottery, or ask someone to send coins to your address.')}`);
+    return card('coins', 'My coins', `<p class="hero num">0</p>${empty('No coins yet. Ask someone to send coins to your address, then lock them in the Mine.')}`);
   }
   const list = exits.slice(0, 6).map(e => `<li><span class="num">${coins(e.amount)}</span> ${counted >= e.release
     ? pill('good', 'ready to withdraw') : `<small>releases at block ${e.release} (${blocksTime(e.release - counted)})</small>`}</li>`).join('');
@@ -43,8 +42,8 @@ ${exits.length ? `<ul class="exits">${list}${more}</ul>` : ''}`);
 }
 
 function chart(samples) {
-  const points = samples.slice(-CHART_POINTS).map(s => ({ h: s.h, t: s.t, mine: units(s.mine), lottery: units(s.lottery), penalties: units(s.penalties) }))
-    .map(p => ({ ...p, net: p.mine + p.lottery - p.penalties }));
+  const points = samples.slice(-CHART_POINTS).map(s => ({ h: s.h, t: s.t, mine: units(s.mine), penalties: units(s.penalties) }))
+    .map(p => ({ ...p, net: p.mine - p.penalties }));
   if (points.length < 2) return empty('The chart fills in as new blocks are counted.');
   const values = points.map(p => Number(p.net) / 1e8);
   let lo = Math.min(0, ...values), hi = Math.max(0, ...values);
@@ -57,10 +56,10 @@ function chart(samples) {
   const zero = (yf(0) * H).toFixed(1);
   const area = `${line}L${W},${zero}L0,${zero}Z`;
   const data = points.map((p, i) => [+xf(p).toFixed(4), +yf(values[i]).toFixed(4), p.h, coins(p.net, { sign: true }),
-    coins(p.mine), coins(p.lottery), coins(p.penalties), when(p.t)]);
+    coins(p.mine), coins(p.penalties), when(p.t)]);
   const first = points[0], last = points.at(-1);
   const top = points.reduce((m, p) => p.net > m ? p.net : m, 0n), bottom = points.reduce((m, p) => p.net < m ? p.net : m, 0n);
-  const rows = points.slice(-12).reverse().map(p => `<tr><td>${p.h}</td><td>${coins(p.net, { sign: true })}</td><td>${coins(p.mine)}</td><td>${coins(p.lottery)}</td><td>${coins(p.penalties)}</td></tr>`).join('');
+  const rows = points.slice(-12).reverse().map(p => `<tr><td>${p.h}</td><td>${coins(p.net, { sign: true })}</td><td>${coins(p.mine)}</td><td>${coins(p.penalties)}</td></tr>`).join('');
   return `<figure class="chart" data-chart data-points="${esc(JSON.stringify(data))}">
 <div class="yaxis num" aria-hidden="true"><span>${coins(top)}</span><span>${bottom < 0n ? coins(bottom) : '0'}</span></div>
 <div class="plot" role="img" aria-label="Net earnings from block ${first.h} to block ${last.h}: ${esc(coins(first.net, { sign: true }))} to ${esc(coins(last.net, { sign: true }))}">
@@ -69,17 +68,16 @@ function chart(samples) {
 <path class="area" d="${area}"/><path class="line" d="${line}" vector-effect="non-scaling-stroke"/></svg>
 <span class="cross" hidden></span><span class="dot" hidden></span><div class="tip" hidden></div></div>
 <div class="xaxis num" aria-hidden="true"><span>block ${first.h}</span><span>block ${last.h}</span></div>
-<details data-key="earnings-table"><summary>Show as table</summary><table><thead><tr><th>Block</th><th>Net</th><th>Mine</th><th>Lottery</th><th>Penalties</th></tr></thead><tbody>${rows}</tbody></table></details>
+<details data-key="earnings-table"><summary>Show as table</summary><table><thead><tr><th>Block</th><th>Net</th><th>Mine</th><th>Penalties</th></tr></thead><tbody>${rows}</tbody></table></details>
 </figure>`;
 }
 
 function earningsCard(history, saveError) {
   if (!history?.started) return card('earnings', 'My earnings', empty('Earnings are recorded from the next counted block on.'));
-  const t = history.totals, mine = units(t.mine), lottery = units(t.lottery), penalties = units(t.penalties);
-  const net = mine + lottery - penalties;
+  const t = history.totals, mine = units(t.mine), penalties = units(t.penalties);
+  const net = mine - penalties;
   return card('earnings', 'My earnings', `<p class="hero num">${coins(net, { sign: true })}</p><p class="sub">earned since block ${history.started.h}</p>
 <div class="tiles"><div><span>Mine payouts</span><b class="num">${coins(mine, { sign: true })}</b></div>
-<div><span>Lottery wins</span><b class="num">${coins(lottery, { sign: true })}</b></div>
 <div><span>Penalties</span><b class="num">${penalties > 0n ? coins(-penalties) : '0'}</b></div></div>
 ${chart(history.samples)}
 <p class="foot">History starts at block ${history.started.h} (${esc(when(history.started.t))}), when this dashboard first ran on this computer. Results the gateway still listed then are included.</p>${saveError ? `<p class="banner">Could not save the history file: ${esc(saveError)}</p>` : ''}`, ' data-wide');
@@ -115,49 +113,6 @@ function mineCard(state, account) {
 <div class="row"><dt>Last vein</dt><dd>${vein}</dd></div></dl>`);
 }
 
-// Shown while the lottery has not ended, or for a day after it while my wins are still listed.
-function lotteryCard(state, address) {
-  const l = state.lottery;
-  const start = int(l?.start), end = int(l?.end), counted = int(state.counted);
-  // While the clock catches up, the real Bitcoin height (from the gateway's header source) is the better estimate.
-  const heights = [int(state.tip?.height), int(state.source_height)].filter(h => h !== null);
-  const tip = heights.length ? Math.max(...heights) : null;
-  if (start === null || end === null || counted === null) return '';
-  const results = Array.isArray(l.recent_results) ? l.recent_results.filter(x => int(x?.tb) !== null) : [];
-  const mineOf = x => (Array.isArray(x.winners) ? x.winners : []).filter(w => w?.address === address);
-  const wins = results.flatMap(x => mineOf(x).map(w => ({ tb: x.tb, amount: w.amount, distance: w.distance })));
-  const over = counted >= end - 1;
-  const recentWins = wins.filter(w => w.tb >= counted - RECENT_WIN_BLOCKS);
-  if (over && !recentWins.length) return '';
-  const winsList = (over ? recentWins : wins).slice().reverse().map(w => `<li><span>Block ${w.tb}</span><span>won <b class="num">${coins(w.amount)}</b>${int(w.distance) !== null ? ` <small>off by ${w.distance}</small>` : ''}</span></li>`).join('');
-  const myWins = winsList ? `<ul class="list">${winsList}</ul>` : empty('No wins in the recent results.');
-  if (over) return card('lottery', 'Lottery', `<p class="state">${pill('muted', 'Lottery over')}<small>all new coins now go to the Mine</small></p><h3>My recent wins</h3>${myWins}`);
-  if (counted < start) {
-    return card('lottery', 'Lottery', `<p class="state">${pill('warn', `Lottery starts at block ${start}`)}<small>${tip !== null ? `${blocksTime(start - tip)} from now` : ''}</small></p>
-<p>${int(l.blocks) ?? end - start} blocks, from ${start} to ${end - 1}. For each block the ${int(l.winners) ?? 10} closest guesses share its coins.</p>
-${targets(l)}`);
-  }
-  const done = Math.max(0, counted - start + 1), total = end - start, pct = Math.min(100, (done / total) * 100);
-  const recent = results.slice(-6).reverse().map(x => {
-    const won = mineOf(x).reduce((s, w) => s + units(w.amount), 0n);
-    return `<tr><td>${x.tb}</td><td>${int(x.winner_count) ?? (x.winners?.length ?? 0)}</td><td class="num">${coins(x.paid)}</td><td>${won > 0n ? `<span class="won">won ${coins(won)}</span>` : '\u2014'}</td></tr>`;
-  }).join('');
-  return card('lottery', 'Lottery', `<p class="state">${pill('good', 'Lottery open')}<small>blocks ${start} to ${end - 1}, ends ${blocksTime(end - 1 - counted)} from now</small></p>
-<div class="meter"><div class="meter-label"><span>Blocks done</span><span class="num">${done} of ${total}</span></div><div class="bar"><span style="width:${pct}%"></span></div></div>
-${targets(l)}
-<h3>My guesses</h3><p class="foot">The gateway does not list guesses per player. Your wins appear here once their block is counted.</p>${myWins}
-<h3>Recent results</h3>${recent ? `<div class="scroll"><table><thead><tr><th>Block</th><th>Winners</th><th>Paid</th><th>Me</th></tr></thead><tbody>${recent}</tbody></table></div>` : empty('No block settled yet.')}`);
-}
-
-function targets(l) {
-  const open = (Array.isArray(l.open_targets) ? l.open_targets : []).filter(t => int(t?.tb) !== null);
-  if (!open.length) return '<h3>Open targets</h3>' + empty('No guesses placed yet.');
-  const accepting = open.filter(t => t.accepting);
-  const guesses = open.reduce((s, t) => s + (int(t.guesses) ?? 0), 0);
-  const items = open.slice(0, 8).map(t => `<li>Block ${t.tb} <small>${int(t.guesses) ?? 0} guesses · ${t.accepting ? 'taking guesses' : 'closed, waiting for the block'}</small></li>`).join('');
-  return `<h3>Open targets</h3><p>${accepting.length} block${accepting.length === 1 ? '' : 's'} taking guesses, ${guesses} guesses so far.</p><ul class="list">${items}</ul>`;
-}
-
 function networkCard(state, snap, now) {
   const gateways = Array.isArray(state.gateways) ? state.gateways : [];
   const active = gateways.filter(g => g?.active === true).length;
@@ -178,7 +133,7 @@ export function renderMain(snap, now = Date.now()) {
       : notice('Connecting', `Asking ${esc(snap.gateway)} for the latest state…`));
   }
   const banner = snap.error ? `<p class="banner" role="status">Gateway not reachable. Showing data from ${esc(ago(now - snap.updatedAt))}. Retrying every 15 seconds.</p>` : '';
-  return `${top}${banner}<div class="grid">${coinsCard(snap.state, snap.account)}${earningsCard(snap.history, snap.historyError)}${mineCard(snap.state, snap.account)}${lotteryCard(snap.state, snap.address)}${networkCard(snap.state, snap, now)}</div>`;
+  return `${top}${banner}<div class="grid">${coinsCard(snap.state, snap.account)}${earningsCard(snap.history, snap.historyError)}${mineCard(snap.state, snap.account)}${networkCard(snap.state, snap, now)}</div>`;
 }
 
 const CSS = `
@@ -271,7 +226,7 @@ const SCRIPT = `(() => {
       const left = (best[0] * 100) + '%';
       cross.style.left = dot.style.left = tip.style.left = left;
       dot.style.top = (best[1] * 100) + '%';
-      tip.textContent = 'Block ' + best[2] + ' \\u00b7 ' + best[3] + '\\nMine ' + best[4] + ' \\u00b7 Lottery ' + best[5] + ' \\u00b7 Penalties ' + best[6];
+      tip.textContent = 'Block ' + best[2] + ' \\u00b7 ' + best[3] + '\\nMine ' + best[4] + ' \\u00b7 Penalties ' + best[5];
       tip.style.whiteSpace = 'pre';
       cross.hidden = dot.hidden = tip.hidden = false;
     });

@@ -97,38 +97,16 @@ test('a gateway that goes away keeps the last data with a clear banner', async t
   assert.match(html, /5 in total/);
 });
 
-test('no coins and the lottery start are shown before anything happened', async t => {
+test('no coins: plain first steps, and the one-time lottery is never shown', async t => {
   const html = text(await view(t, state({ counted: 971700 }), account()));
-  assert.match(html, /No coins yet/);
-  assert.match(html, /Lottery starts at block 971712/);
-  assert.match(html, /about 2 h from now/);
+  assert.match(html, /No coins yet. Ask someone to send coins to your address, then lock them in the Mine/);
   assert.match(html, /Lock coins to take part/);
   assert.match(html, /Gateways active 1 of 2/);
-});
-
-test('open lottery shows window, targets, my wins and recent results', async t => {
-  const results = [
-    { tb: 971780, hash: 'cd'.repeat(32), winners: [{ address: OTHER, n: '00000001', distance: 3, amount: '309375000' }], paid: '309375000', to_mine: '0', winner_count: 1, winners_truncated: false },
-    { tb: 971781, hash: 'ef'.repeat(32), winners: [{ address: ME, n: 'abcdef01', distance: 12, amount: '154687500' }, { address: OTHER, n: '00000002', distance: 40, amount: '154687500' }], paid: '309375000', to_mine: '0', winner_count: 2, winners_truncated: false }];
-  const html = text(await view(t, state({ lottery: { open_targets: [{ tb: 971795, guesses: 7, accepting: true, capacity_left: 1793 }, { tb: 971792, guesses: 3, accepting: false, capacity_left: 1797 }], recent_results: results } }),
-    account({ balance: '154687500' })));
-  assert.match(html, /Lottery open/);
-  assert.match(html, /Blocks done 79 of 144/);
-  assert.match(html, /1 block taking guesses, 10 guesses so far/);
-  assert.match(html, /Block 971781 won 1.546875 off by 12/);
-  assert.match(html, /won 1.546875/);
-  assert.match(html, /1.546875 in total/);
-});
-
-test('the lottery card disappears after the lottery unless my wins are recent', async t => {
   const win = { tb: 971855, hash: 'cd'.repeat(32), winners: [{ address: ME, n: '00000001', distance: 1, amount: '30937500' }], paid: '309375000', to_mine: '0', winner_count: 10, winners_truncated: false };
-  const recent = text(await view(t, state({ counted: 971900, lottery: { recent_results: [win] } }), account({ balance: '30937500' })));
-  assert.match(recent, /Lottery over/);
-  assert.match(recent, /Block 971855 won 0.309375/);
-  const later = await view(t, state({ counted: 972100, lottery: { recent_results: [win] } }), account({ balance: '30937500' }));
-  assert.doesNotMatch(later, /id="lottery"/);
-  const nobody = await view(t, state({ counted: 971900 }), account());
-  assert.doesNotMatch(nobody, /id="lottery"/);
+  for (const counted of [971700, 971790, 971900]) {
+    const page = await view(t, state({ counted, lottery: { open_targets: [{ tb: 971795, guesses: 7, accepting: true, capacity_left: 1793 }], recent_results: [win] } }), account({ balance: '30937500' }));
+    assert.doesNotMatch(page, /lottery/i);
+  }
 });
 
 test('Mine shows round, window, fair share, last claim, strikes, stock and vein', async t => {
@@ -161,9 +139,9 @@ test('history samples once per counted block, counts each result once and stays 
   assert.equal(history.observe({ state: s(971790), account: account({ mine: { last_result: result } }), now: T0 }), true);
   assert.equal(history.observe({ state: s(971790), account: account({ mine: { last_result: result } }), now: T0 + 1 }), false);
   assert.equal(history.observe({ state: s(971791), account: account({ mine: { last_result: result } }), now: T0 + 2 }), true);
-  assert.deepEqual(history.totals, { mine: '50000000', lottery: '100000000', penalties: '0' });
+  assert.deepEqual(history.totals, { mine: '50000000', lottery: '0', penalties: '0' });   // lottery wins are no longer added
   history.observe({ state: s(971797), account: account({ balance: '7', mine: { last_result: { r: 2, amount: '10', penalty: '4' } } }), now: T0 + 3 });
-  assert.deepEqual(history.totals, { mine: '50000010', lottery: '100000000', penalties: '4' });
+  assert.deepEqual(history.totals, { mine: '50000010', lottery: '0', penalties: '4' });
   assert.equal(history.last.holdings, '7');
   await history.save();
   assert.equal((await stat(join(dir, HISTORY_FILE))).mode & 0o777, 0o600);
@@ -175,7 +153,7 @@ test('history samples once per counted block, counts each result once and stays 
   assert.ok(main.samples.length <= 10 && archive.samples.length <= 10);
   assert.equal(main.samples.at(-1).h, 971829);
   assert.deepEqual(main.started, { h: 971790, t: T0 });
-  assert.deepEqual(main.totals, { mine: '50000010', lottery: '100000000', penalties: '4' });
+  assert.deepEqual(main.totals, { mine: '50000010', lottery: '0', penalties: '4' });
   // Another address's history is moved aside, never overwritten.
   const other = await History.load(dir, OTHER);
   assert.equal(other.samples.length, 0);

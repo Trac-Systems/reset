@@ -1,5 +1,5 @@
 // Local earnings history. The gateway only reports current state, so the dashboard records one sample per newly
-// counted block and adds up Mine payouts, lottery wins and penalties as they appear.
+// counted block and adds up Mine payouts and penalties as they appear.
 import { constants } from 'node:fs';
 import { mkdir, open, rename } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -9,7 +9,6 @@ export const HISTORY_FILE = 'dashboard-history.json';
 export const ARCHIVE_FILE = 'dashboard-history.1.json';
 export const MAX_SAMPLES = 4032;
 const MAX_BYTES = 4 * 1024 * 1024;
-const SEEN_TARGETS = 64;
 
 const amount = v => typeof v === 'string' && /^[0-9]{1,78}$/.test(v);
 const fresh = address => ({ v: 1, address, started: null, seen: { mine_r: null, lottery: [] },
@@ -75,13 +74,7 @@ export class History {
       penalties += units(result.penalty);
       d.seen.mine_r = result.r;
     }
-    for (const record of Array.isArray(state?.lottery?.recent_results) ? state.lottery.recent_results : []) {
-      if (int(record?.tb) === null || d.seen.lottery.includes(record.tb)) continue;
-      d.seen.lottery.push(record.tb);
-      for (const winner of Array.isArray(record.winners) ? record.winners : []) if (winner?.address === address) lottery += units(winner.amount);
-    }
-    // Targets settle in increasing order, so anything older than the kept tail has also left recent_results.
-    d.seen.lottery = d.seen.lottery.slice(-SEEN_TARGETS);
+    // The lottery was a one-time start; its fields stay in the file format only so older history files still load.
     d.totals = { mine: mine.toString(), lottery: lottery.toString(), penalties: penalties.toString() };
     const exiting = (Array.isArray(account?.exits) ? account.exits : []).reduce((sum, e) => sum + units(e?.amount), 0n);
     const holdings = units(account?.balance) + units(account?.deposit) + exiting;

@@ -46,8 +46,8 @@ function origin(value, label) {
 function boundedFetch(base) {
   return async (input, init = {}) => {
     const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
-    check(url.origin === base && /^\/(?:auth\/(?:challenge|login)|mcp|v1\/(?:state|account\/[0-9a-f]{64}|move|tx\/(?:prepare|submit)))$/.test(url.pathname) &&
-      !url.search && !url.hash, 'Unexpected service route');
+    check(url.origin === base && /^\/(?:auth\/(?:challenge|login)|mcp|v1\/(?:state|account\/[0-9a-f]{64}|move|tx\/(?:prepare|submit)|chat|chat\/send))$/.test(url.pathname) &&
+      (!url.search || (url.pathname === '/v1/chat' && /^\?after=(?:0|[1-9][0-9]{0,15})$/.test(url.search))) && !url.hash, 'Unexpected service route');
     try {
       const response = await fetch(input, { ...init, redirect: 'error',
         signal: AbortSignal.any([AbortSignal.timeout(5000), ...(init.signal ? [init.signal] : [])]) });
@@ -77,7 +77,7 @@ export function localBackend({ wallet, gatewayUrl, mcpUrl }) {
     try { result = await response.json(); } catch { throw new Error('Service returned invalid JSON.'); }
     check(result && typeof result === 'object' && !Array.isArray(result), 'Service returned an invalid response.');
     if (!response.ok) {
-      if (['/v1/move', '/v1/tx/submit'].includes(path) && response.status >= 400 && response.status < 500 && result.ok === false) return result;
+      if (['/v1/move', '/v1/tx/submit', '/v1/chat/send'].includes(path) && response.status >= 400 && response.status < 500 && result.ok === false) return result;
       throw new Error(rejection(result.error));
     }
     return result;
@@ -109,6 +109,10 @@ export function localBackend({ wallet, gatewayUrl, mcpUrl }) {
   return {
     state: () => gateway ? direct('/v1/state') : tool('reset_state'),
     account: () => gateway ? direct(`/v1/account/${addr}`) : tool('reset_account'),
+    // Chat goes through the gateway only (the hosted MCP service has no chat).
+    accountOf(other) { check(gateway, 'Chat needs a gateway (--gateway).'); check(/^[0-9a-f]{64}$/.test(other), 'Invalid address'); return direct(`/v1/account/${other}`); },
+    chatList(after) { check(gateway, 'Chat needs a gateway (--gateway).'); return direct(after === null ? '/v1/chat' : `/v1/chat?after=${after}`); },
+    chatSend(message) { check(gateway, 'Chat needs a gateway (--gateway).'); return direct('/v1/chat/send', { message }); },
     prepareMove: (t, p, state) => hosted ? tool('reset_prepare_move', { t, p }) : prepareMove(addr, t, p, state),
     submitMove: signed => hosted ? tool('reset_submit_move', signed) : direct('/v1/move', signed),
     async prepareTransfer(to, amount) {

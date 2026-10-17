@@ -103,7 +103,7 @@ export async function runChatAgent({ wallet, backend, guard, directory, model, p
   await watcher.ready;
   signal?.addEventListener('abort', () => stop('Stopping.'));
   const history = [];
-  let lastActivity = now(), lastTurn = 0, lastSpoke = 0, backoff = 0;
+  let lastActivity = now(), lastTurn = 0, lastSpoke = 0, backoff = 0, waiting = [];
   try {
     while (!stopping) {
       busy = true;
@@ -113,10 +113,13 @@ export async function runChatAgent({ wallet, backend, guard, directory, model, p
         const view = await chat.read();
         for (const m of view.messages) history.push(m);
         history.splice(0, Math.max(0, history.length - 40));
-        const fresh = view.messages.filter(m => !m.you);
+        // New messages wait while the agent may not speak yet (one message per 30 s), so no answer is lost.
+        waiting.push(...view.messages.filter(m => !m.you));
+        const fresh = waiting;
         const quiet = now() - Math.max(lastActivity, lastSpoke) >= quietMs && now() - lastTurn >= quietMs;
-        if (fresh.length) lastActivity = now();
-        if ((fresh.length || quiet) && now() >= backoff) {
+        if (view.messages.some(m => !m.you)) lastActivity = now();
+        if ((fresh.length || quiet) && now() >= backoff && now() - lastSpoke >= 30000) {
+          waiting = [];
           lastTurn = now();
           log(fresh.length ? `new: ${fresh.map(m => '#' + m.id).join(', ')}` : 'quiet chat: asking whether to say something');
           const tools = [fn('chat_send', 'Say one line in the chat (at most 240 characters). Optional.', { text: { type: 'string' } })];
@@ -136,7 +139,7 @@ export async function runChatAgent({ wallet, backend, guard, directory, model, p
           if (!calls.length) log('stayed quiet');
           for (const c of calls) {
             if (stopping || readMode(directory).mode === 'off') break;
-            if (c.name === 'chat_send' && !sent && now() - lastSpoke >= 30000) {
+            if (c.name === 'chat_send' && !sent) {
               const r = await chat.send(String(c.args.text ?? ''));
               sent = true;
               if (r.ok) { lastSpoke = now(); log(`said: ${r.sent}`); } else log(`not sent: ${r.refused}`);

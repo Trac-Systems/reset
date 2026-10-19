@@ -37,7 +37,8 @@ export async function createLocalMcp({ wallet, gatewayUrl, mcpUrl, context, maxA
   let busy = false;
   async function notice(message) {
     log(message);
-    await server.sendLoggingMessage({ level: 'info', logger: 'reset-signer', data: message });
+    // The built-in agent calls the tools without an MCP client; then the local log line is the only notice.
+    if (server.isConnected()) await server.sendLoggingMessage({ level: 'info', logger: 'reset-signer', data: message }).catch(() => {});
   }
   async function snapshot() {
     for (let i = 0; i < 3; i++) {

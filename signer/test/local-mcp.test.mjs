@@ -9,6 +9,8 @@ import { units, coins } from '../lib/local-state.mjs';
 import { transactionHash } from '../lib/wire.mjs';
 import { context } from './helpers.mjs';
 import { createMcpService } from '../../mcp/lib/server.mjs';
+import { createLocalMcp } from '../lib/local-mcp.mjs';
+import { unlock, wipeWallet } from '../lib/index.mjs';
 import { createServer } from 'node:http';
 import { chain, parseHeader } from '../../tests/helpers/chain.mjs';
 
@@ -60,6 +62,17 @@ test('stdio tools play through the contract, preserve secrets, report work and s
   assert.equal(JSON.stringify([c.outputs, c.logs, f.control.requests]).includes(password), false);
   assert.equal(JSON.stringify(c.outputs).includes('signature'), false);
   f.ledger.check();
+});
+
+test('without an MCP client (the built-in agent) lock and claim still go through', async t => {
+  const f = await localFixture(t), wallet = await unlock({ directory: f.directory, password });
+  const context = JSON.parse(await readFile(f.contextFile, 'utf8')), logs = [];
+  const service = await createLocalMcp({ wallet, context, gatewayUrl: f.gatewayUrl, directory: f.directory, role: 'mine',
+    processRole: 'mine-agent', log: text => logs.push(text) });
+  t.after(async () => { await service.close(); wipeWallet(wallet); });
+  assert.equal((await service.call('lock', { amount: '0.00000010' })).error, false);
+  assert.equal((await service.call('mine_claim')).error, false);
+  assert.ok(logs.some(x => x.includes('Puzzle solved locally')));
 });
 
 test('post_headers brings new Bitcoin headers in batches, then reports nothing new', async t => {

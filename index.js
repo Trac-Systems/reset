@@ -5,6 +5,7 @@ import b4a from 'b4a';
 import PeerWallet from 'trac-wallet';
 import { Peer, Wallet, createConfig as createPeerConfig, ENV as PEER_ENV } from 'trac-peer';
 import { MainSettlementBus } from 'trac-msb/src/index.js';
+import { fanOutValidatorSends } from './runtime/fanout.js';
 import { createConfig as createMsbConfig, ENV as MSB_ENV } from 'trac-msb/src/config/env.js';
 import { ensureTextCodecs } from 'trac-peer/src/textCodec.js';
 import { getPearRuntime, ensureTrailingSlash, toArgMap } from 'trac-peer/src/runnerArgs.js';
@@ -453,6 +454,7 @@ await ensureKeypairFile(peerConfig.keyPairPath, walletOptions);
 console.log('=============== STARTING MSB ===============');
 const msb = new MainSettlementBus(msbConfig, msbWallet);
 await msb.ready();
+fanOutValidatorSends(msb.network);
 
 console.log('=============== STARTING PEER ===============');
 const peer = new Peer({

@@ -17,6 +17,7 @@ import { relayConfigFromFlags } from '../features/blind-relay/config.js';
 import { validateConfig, validateFlags } from './config.js';
 import { LAUNCH } from '../contract/launch.js';
 import { adminCommand, until } from './admin.js';
+import { fanOutValidatorSends } from './fanout.js';
 
 async function walletAt(filename, WalletClass, options) {
   fs.mkdirSync(path.dirname(filename), { recursive: true, mode: 0o700 });
@@ -68,6 +69,7 @@ export async function runConfiguredPeer(flags) {
       enableWallet: true, enableRoleRequester: false, enableValidatorObserver: !devnet, enableTxApplyLogs: false });
     const options = { networkPrefix: mc.addressPrefix, derivationPath: mc.derivationPath };
     bus = new MainSettlementBus(mc, await walletAt(mc.keyPairPath, PeerWallet, options)); await bus.ready();
+    fanOutValidatorSends(bus.network);
     if (devnet) {
       await bus.network.tryConnect(config.validatorKey, 'validator');
       await until(() => bus.state.getAdminEntry(), 'local MSB synchronized');

@@ -79,6 +79,19 @@ export class Gateway extends Feature {
     if (tx !== recomputed) throw new Error('msb_root_changed');
     return { address: body.address, to: body.to, amount: body.amount, prepared_command, tx, nonce: body.nonce, context };
   }
+  // Where a submitted transfer stands, so a client knows whether to wait or send again:
+  //   applied   - the contract ran it;
+  //   queued    - the MSB has it; it is applied once the indexers sign it, however long that takes;
+  //   submitted - sent to validators, not yet seen in the MSB;
+  //   stranded  - the MSB has it but this gateway no longer tracks it (check again in a minute; an operator looks);
+  //   unknown   - never seen here, or dropped before the MSB took it: sending a new transfer is safe.
+  async txStatus(hash) {
+    const pending = this.peer.txPool?.contains(hash) === true;
+    const inMsb = this.options.msb ? (await this.options.msb.state.get(hash)) !== null : false;
+    if (await this.peer.protocol.instance.get('tx/' + hash) !== null) return 'applied';
+    if (inMsb) return pending ? 'queued' : 'stranded';
+    return pending ? 'submitted' : 'unknown';
+  }
   async submitTransfer(body) {
     if (!exactKeys(body, ['tx', 'prepared_command', 'address', 'signature', 'nonce']) ||
         !exactKeys(body.prepared_command, ['type', 'value']) || body.prepared_command.type !== 'transfer' ||
@@ -128,6 +141,10 @@ export class Gateway extends Feature {
         const id = path.slice('/v1/account/'.length), key = /^[0-9a-f]{64}$/.test(id) ? id : tracToHex(id);
         if (!key) return send(400, { ok: false, error: 'address' });
         return send(200, await this.api.coinAccount(key));
+      }
+      if (req.method === 'GET' && /^\/v1\/tx\/[0-9a-f]{64}$/.test(path)) {
+        const tx = path.slice('/v1/tx/'.length);
+        return send(200, { tx, status: await this.txStatus(tx) });
       }
       if (path === '/v1/chat' || path.startsWith('/v1/chat/')) return this.handleChat(req, path, send);
       if (req.method !== 'POST' || !['/v1/move', '/v1/tx/prepare', '/v1/tx/submit'].includes(path)) return send(404, { ok: false, error: 'not_found' });

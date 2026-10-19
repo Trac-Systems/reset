@@ -413,6 +413,9 @@ const peerConfig = createPeerConfig(PEER_ENV.MAINNET, {
   channel: subnetChannel,
   apiMsgExposed: gatewayEnabled,
   apiTxExposed: gatewayEnabled,
+  // Indexers can hold transactions back for hours; see runtime/peer.js.
+  maxTxDelay: 6 * 3600,
+  txPoolMaxSize: 10_000,
   txContentHash: 'utf8-strict',
   enableInteractiveMode: true,
   enableBackgroundTasks: true,
@@ -521,6 +524,7 @@ console.log('');
 let gateway = null;
 if (gatewayEnabled) {
   gateway = new Gateway(peer, {
+    msb,
     port: flags['gateway-port'] === undefined ? 49223 : Number(flags['gateway-port']),
     headerSource: flags['gateway-header-source'] || 'off',
   });

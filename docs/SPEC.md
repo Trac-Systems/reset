@@ -111,7 +111,12 @@ to it; the gateway is never a wallet for anyone but itself.
   (schema, `b`/`h`, puzzle, capacity, rate, balances, signature) → `api.post` → `{ ok, error? }`. Rejected moves are
   never written. Per-IP and per-address rate limits in memory.
 - `POST /v1/tx/prepare` and `POST /v1/tx/submit`: thin pass-through to trac-peer `generateTx`/`api.tx` for transfers
-  (the player's signer signs the tx hash). No keys held.
+  (the player's signer signs the tx hash). No keys held. Every transfer goes to up to three validators at once, and
+  the gateway waits up to six hours for the MSB to append it (indexers can hold a backlog back).
+- `GET  /v1/tx/:hash` → `{ tx, status }`: `applied` (the contract ran it), `queued` (the MSB has it; it is applied once
+  the indexers sign it), `submitted` (sent, not yet seen in the MSB), `stranded` (the MSB has it but the gateway no
+  longer tracks it; check again in a minute), `unknown` (never seen, or dropped before the MSB took it: a new transfer
+  is safe). Wait while `queued` or `submitted`; never send the same payment again before `unknown`.
 - Header watcher (optional knob): fetches new Bitcoin headers from a configured source, posts them as its own signed
   `header` moves (it earns the 10 % poster share like anyone). It waits `headerDelayMs` (default 60 000) after first
   seeing a new block, so agents get the first chance to post it; the gateway posts only as a fallback.

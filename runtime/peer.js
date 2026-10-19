@@ -19,6 +19,9 @@ import { LAUNCH } from '../contract/launch.js';
 import { adminCommand, until } from './admin.js';
 import { fanOutValidatorSends } from './fanout.js';
 
+export const MAX_TX_DELAY_SECONDS = 6 * 3600;
+export const TX_POOL_MAX_SIZE = 10_000;
+
 async function walletAt(filename, WalletClass, options) {
   fs.mkdirSync(path.dirname(filename), { recursive: true, mode: 0o700 });
   const wallet = new WalletClass(options); await wallet.ready;
@@ -85,7 +88,11 @@ export async function runConfiguredPeer(flags) {
       storesDirectory: config.storeDirectory, storeName: 'peer', bootstrap, channel: config.subnetChannel,
       dhtBootstrap: config.peerDhtBootstrap, txContentHash: 'utf8-strict', enableInteractiveMode: false,
       replicate: true, enableUpdater: true, enableBackgroundTasks: true, enableTxlogs: false,
-      apiMsgExposed: role === 'gateway', apiTxExposed: role === 'gateway' });
+      apiMsgExposed: role === 'gateway', apiTxExposed: role === 'gateway',
+      // Indexers can hold transactions back for hours while they sign a backlog (3 h seen); trac-peer's default 60 s
+      // dropped transfers that the MSB then appended late, so they were never applied here. A full pool would stop
+      // tracking new transfers, so it grows with the longer wait.
+      maxTxDelay: MAX_TX_DELAY_SECONDS, txPoolMaxSize: TX_POOL_MAX_SIZE });
     // Without this explicit local-test option StateTransition uses contract/launch.js.
     if (devnet) pc.beaconOptions = config.beaconOptions;
     else if (config.rehearsal) pc.beaconOptions = { ...LAUNCH, coinStart: config.rehearsal.coinStart, lotteryBlocks: config.rehearsal.lotteryBlocks };
@@ -108,7 +115,7 @@ export async function runConfiguredPeer(flags) {
       await sidechannel.start();
     }
     if (role === 'gateway') {
-      gateway = new Gateway(peer, { chat, port: config.gatewayPort ?? 49223, headerSource: config.headerSource ?? 'off', trustProxy: config.trustProxy === true,
+      gateway = new Gateway(peer, { chat, msb: bus, port: config.gatewayPort ?? 49223, headerSource: config.headerSource ?? 'off', trustProxy: config.trustProxy === true,
         ...(config.headerDelayMs !== undefined ? { headerDelayMs: config.headerDelayMs } : {}),
         ...(devnet ? { pollMs: 100, ipLimit: 10000, addressLimit: 10000 } : {}) });
       await peer.protocol.instance.addFeature('gateway', gateway); await gateway.start();

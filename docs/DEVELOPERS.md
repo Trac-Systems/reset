@@ -52,7 +52,8 @@ needs to settle; inspect the transaction through the peer API before relying on 
 
 Free local reads are `GET /v1/state` and `GET /v1/account/:address` (the 64-hex key or its `trac1…` address). Players solve puzzles and sign locally; submit
 `{prepared,signature,nonce}` to `POST /v1/move`. Transfers use `/v1/tx/prepare` and `/v1/tx/submit`; their exact
-signing context is documented in the spec. The gateway owns only its own peer wallet.
+signing context is documented in the spec. `GET /v1/tx/:hash` tells whether a submitted transfer is applied, still queued
+(wait, even for hours) or unknown (only then is sending it again safe). The gateway owns only its own peer wallet.
 
 `GET /v1/mine/view?after=<64 lowercase hex address>` returns a read-only Mine snapshot with integer base-unit
 amounts, round and settlement summaries, and up to 400 sorted miner rows within 56 KiB. Each row is

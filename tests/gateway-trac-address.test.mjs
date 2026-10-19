@@ -33,3 +33,27 @@ test('GET /v1/account takes the hex key or the trac address', async () => {
   const bad = await get('/v1/account/' + TRAC.slice(0, -1) + 'q');
   assert.equal(bad.status, 400); assert.deepEqual(bad.body, { ok: false, error: 'address' }); assert.deepEqual(bad.seen, []);
 });
+
+test('GET /v1/tx reports where a transfer stands', async () => {
+  const tx = 'ab'.repeat(32);
+  const cases = [
+    [{ applied: true, pool: true, msb: true }, 'applied'],
+    [{ pool: true, msb: true }, 'queued'],
+    [{ pool: true }, 'submitted'],
+    [{ msb: true }, 'stranded'],
+    [{}, 'unknown']
+  ];
+  for (const [state, expected] of cases) {
+    const self = {
+      options: { msb: { state: { get: async key => key === tx && state.msb ? { value: 1 } : null } } }, rate: () => true, clientIp: () => '127.0.0.1',
+      peer: { txPool: { contains: key => key === tx && state.pool === true }, protocol: { instance: { get: async key => key === 'tx/' + tx && state.applied ? 7 : null } } },
+      txStatus: Gateway.prototype.txStatus
+    };
+    const res = { status: 0, body: '', writeHead(status) { this.status = status; }, end(body) { this.body = body; } };
+    await Gateway.prototype.handle.call(self, { method: 'GET', url: '/v1/tx/' + tx, headers: {} }, res);
+    assert.equal(res.status, 200); assert.deepEqual(JSON.parse(res.body), { tx, status: expected });
+  }
+  const res = { status: 0, body: '', writeHead(status) { this.status = status; }, end(body) { this.body = body; } };
+  await Gateway.prototype.handle.call({ options: {}, rate: () => true, clientIp: () => '127.0.0.1' }, { method: 'GET', url: '/v1/tx/xyz', headers: {} }, res);
+  assert.equal(res.status, 404);
+});

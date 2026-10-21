@@ -230,3 +230,12 @@ test('MCP startup errors stay off stdout and do not expose the password', async 
     assert.equal(error.stdout, ''); assert.match(error.stderr, /Wrong password/); assert.ok(!error.stderr.includes(password)); return true;
   });
 });
+
+test('other players moving during the reads (claim counts, capacity used) do not refuse a move', async t => {
+  const f = await localFixture(t), c = await f.connect();
+  let claims = 0;
+  f.control.state = s => ({ ...s, capacity_by_type: { ...s.capacity_by_type, claim: s.capacity_by_type.claim - (++claims % 5) },
+    mine: { ...s.mine, claim_count: s.mine.claim_count + claims } });
+  await c.call('lock', { amount: '1' });
+  assert.equal(f.control.submissions.length, 1);
+});

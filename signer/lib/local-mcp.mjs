@@ -40,12 +40,16 @@ export async function createLocalMcp({ wallet, gatewayUrl, mcpUrl, context, maxA
     // The built-in agent calls the tools without an MCP client; then the local log line is the only notice.
     if (server.isConnected()) await server.sendLoggingMessage({ level: 'info', logger: 'reset-signer', data: message }).catch(() => {});
   }
+  // The account read is consistent when the block, the counted height, the round and the rules did not change around it.
+  // Live counters (claims and capacity used this block, lottery guesses, gateway beats) change with every other
+  // player's move and are not compared: comparing them failed claims at busy round openings.
+  const blockOf = s => stableStringify({ tip: s.tip, counted: s.counted, round: s.mine.r, params: s.params, bits: s.bits });
   async function snapshot() {
     for (let i = 0; i < 3; i++) {
       const state = validateState(await backend.state());
       const raw = await backend.account();
       const current = validateState(await backend.state());
-      if (stableStringify(state) === stableStringify(current)) return { state, account: validateAccount(raw, state) };
+      if (blockOf(state) === blockOf(current)) return { state: current, account: validateAccount(raw, current) };
     }
     throw new Error('Gateway state changed between reads. Try again when the current block is stable.');
   }
